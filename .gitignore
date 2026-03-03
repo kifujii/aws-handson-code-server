@@ -1,0 +1,12 @@
+# 認証情報 (.env.template はコミット対象)
+.env
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+
+# SSH キー
+*.pem
