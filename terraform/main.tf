@@ -220,3 +220,16 @@ resource "aws_instance" "handson" {
     create_before_destroy = false
   }
 }
+
+################################################################################
+# Elastic IP (パブリックIPの固定化)
+################################################################################
+
+resource "aws_eip" "handson" {
+  instance = aws_instance.handson.id
+  domain   = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-eip"
+  }
+}

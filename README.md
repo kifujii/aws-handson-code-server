@@ -83,6 +83,7 @@ graph TB
 | セキュリティ | Security Group | 443(ステータスページ) + 8001〜8020(参加者) + 22(管理者IP、オプション) |
 | | SSH Key Pair | 管理者SSH用 (自動生成) |
 | コンピュート | EC2 (m6i.8xlarge) | 32vCPU / 128GB RAM / 300GB gp3 |
+| | Elastic IP | パブリックIP固定化 (停止・再起動してもIPが変わらない) |
 | IAM | IAMユーザー x N | コンソールアクセス無効・プログラムアクセスのみ |
 | | IAMポリシー | Bedrock + EC2/VPC + 限定IAM |
 | | アクセスキー x N | ユーザーごとに自動生成 |
@@ -376,7 +377,10 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 |----------|----------------------|------------|
 | EC2 m6i.8xlarge | 約 $2.46/時間 | 約 $20 |
 | EBS 300GB gp3 | 約 $0.096/GB/月 | 約 $0.03 |
+| Elastic IP (実行中) | $0.005/時間 | 約 $0.04 |
 | データ転送 | 最初の 100GB 無料 | $0 |
 | **合計** | | **約 $20** |
 
 > IAM ユーザー・ポリシーに料金はかかりません。Bedrock の利用料金は別途発生します。
+
+> **Elastic IP の注意点**: Elastic IP は EC2 インスタンスに関連付けられている間は $0.005/時間 の料金が発生します。`terraform destroy` で EIP も自動削除されるため、ハンズオン終了後に destroy すれば追加コストは無視できるレベルです。ただし、**EC2 を停止して EIP だけ残した場合も同額が課金される**ため、不要になったら必ず `terraform destroy` で削除してください。
