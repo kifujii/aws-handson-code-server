@@ -118,6 +118,15 @@ resource "aws_security_group" "handson" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # 管理者用ポート (8000)
+  ingress {
+    description = "Code Server port for admin"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # 参加者用ポート (8001〜8000+user_count)
   ingress {
     description = "Code Server ports for participants"
@@ -207,6 +216,11 @@ resource "aws_instance" "handson" {
       secret_key = aws_iam_access_key.handson[i].secret
       password   = random_password.code_server[i].result
     }]))
+    admin_json_b64 = base64encode(jsonencode({
+      access_key = var.admin_access_key
+      secret_key = var.admin_secret_key
+      password   = random_password.admin.result
+    }))
     aws_account_id = data.aws_caller_identity.current.account_id
     aws_region     = var.aws_region
   }))

@@ -9,6 +9,12 @@ resource "random_password" "code_server" {
   special = false
 }
 
+# 管理者用 code-server のパスワード
+resource "random_password" "admin" {
+  length  = 16
+  special = false
+}
+
 ################################################################################
 # IAM ユーザー
 ################################################################################
@@ -67,16 +73,68 @@ resource "aws_iam_policy" "handson" {
         Action = [
           "iam:PassRole",
           "iam:GetRole",
+          "iam:GetInstanceProfile",
           "iam:ListRoles",
+          "iam:ListAttachedRolePolicies",
+          "iam:ListRolePolicies",
+          "iam:ListInstanceProfiles",
+          "iam:ListInstanceProfilesForRole",
           "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:TagRole",
           "iam:AttachRolePolicy",
           "iam:DetachRolePolicy",
-          "iam:DeleteRole",
-          "iam:ListInstanceProfiles",
           "iam:CreateInstanceProfile",
           "iam:DeleteInstanceProfile",
+          "iam:TagInstanceProfile",
           "iam:AddRoleToInstanceProfile",
           "iam:RemoveRoleFromInstanceProfile"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "SSMAccess"
+        Effect = "Allow"
+        Action = [
+          "ssm:DescribeInstanceInformation",
+          "ssm:SendCommand",
+          "ssm:ListCommands",
+          "ssm:ListCommandInvocations",
+          "ssm:GetCommandInvocation",
+          "ssm:StartSession",
+          "ssm:TerminateSession",
+          "ssm:DescribeSessions",
+          "ssm:GetConnectionStatus"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchAccess"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:DeleteAlarms",
+          "cloudwatch:ListMetrics",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchLogsAccess"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents",
+          "logs:PutRetentionPolicy",
+          "logs:DeleteLogGroup",
+          "logs:DeleteLogStream"
         ]
         Resource = "*"
       },

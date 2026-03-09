@@ -28,6 +28,17 @@ output "ssh_command" {
   value       = var.admin_cidr != "" ? "ssh -i key.pem ec2-user@${aws_eip.handson.public_ip}" : "SSHアクセスは無効です (admin_cidr が未設定)"
 }
 
+output "admin_url" {
+  description = "管理者用 code-server の URL (admin権限)"
+  value       = "https://${aws_eip.handson.public_ip}:8000/"
+}
+
+output "admin_password" {
+  description = "管理者用 code-server のパスワード"
+  value       = random_password.admin.result
+  sensitive   = true
+}
+
 output "setup_status_url" {
   description = "セットアップ状況確認URL (ブラウザで開く)"
   value       = "https://${aws_eip.handson.public_ip}/"

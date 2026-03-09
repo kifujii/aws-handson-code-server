@@ -10,3 +10,6 @@ terraform/*.tfplan
 
 # SSH キー
 *.pem
+
+# cursorワークスペース
+vsc.code-workspace

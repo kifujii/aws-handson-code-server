@@ -37,3 +37,15 @@ variable "project_name" {
   type        = string
   default     = "handson"
 }
+
+variable "admin_access_key" {
+  description = "管理者用code-server環境のAWSアクセスキー (AdministratorAccess相当)"
+  type        = string
+  sensitive   = true
+}
+
+variable "admin_secret_key" {
+  description = "管理者用code-server環境のAWSシークレットキー"
+  type        = string
+  sensitive   = true
+}
