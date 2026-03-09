@@ -3,10 +3,11 @@
 # user-data.sh.tpl - ハンズオン用 code-server 環境自動セットアップ
 #
 # Terraform templatefile() で以下の変数が注入される:
-#   - users_json_b64 : ユーザー情報のBase64エンコードJSON配列
-#   - admin_json_b64 : 管理者情報のBase64エンコードJSON (admin権限)
-#   - aws_account_id : AWSアカウントID
-#   - aws_region     : AWSリージョン
+#   - users_json_b64    : ユーザー情報のBase64エンコードJSON配列
+#   - admin_json_b64    : 管理者情報のBase64エンコードJSON (admin権限)
+#   - user_start_number : ユーザー番号の開始値 (ポート計算に使用)
+#   - aws_account_id    : AWSアカウントID
+#   - aws_region        : AWSリージョン
 #
 # セットアップ状態はブラウザから確認可能:
 #   https://<EC2のIP>/   → ステータスページ (セットアップ中)
@@ -26,6 +27,7 @@ STATE_FILE="$${WORK_DIR}/setup-state"
 ERROR_FILE="$${WORK_DIR}/setup-error"
 USERS_JSON=$(echo "${users_json_b64}" | base64 -d)
 ADMIN_JSON=$(echo "${admin_json_b64}" | base64 -d)
+USER_START_NUMBER="${user_start_number}"
 AWS_ACCOUNT_ID="${aws_account_id}"
 AWS_REGION="${aws_region}"
 
@@ -510,10 +512,10 @@ server {
 }
 NGINX_HEAD
 
-# 各ユーザー用サーバーブロック (ポート8001, 8002, ...)
+# 各ユーザー用サーバーブロック
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
   USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
-  USER_PORT=$((8001 + i))
+  USER_PORT=$((8000 + USER_START_NUMBER + i))
 
   cat >> "$${WORK_DIR}/nginx.conf" << NGINX_USER
 server {
@@ -567,7 +569,7 @@ server {
 }
 NGINX_ADMIN
 
-complete_step 6 "$${USER_COUNT} ユーザー + admin のサーバーブロック生成 (ポート 8000-$((8000 + USER_COUNT)))"
+complete_step 6 "$${USER_COUNT} ユーザー + admin のサーバーブロック生成 (ポート 8000, $((8000 + USER_START_NUMBER))-$((8000 + USER_START_NUMBER + USER_COUNT - 1)))"
 
 # ---------------------------------------------------------------------------
 # 7. docker-compose.yml の動的生成
@@ -590,7 +592,7 @@ echo '      - "8000:8000"' >> "$${WORK_DIR}/docker-compose.yml"
 
 # nginx のユーザーポートマッピングを追加
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
-  USER_PORT=$((8001 + i))
+  USER_PORT=$((8000 + USER_START_NUMBER + i))
   echo "      - \"$${USER_PORT}:$${USER_PORT}\"" >> "$${WORK_DIR}/docker-compose.yml"
 done
 
@@ -711,5 +713,5 @@ echo "=========================================="
 echo ""
 echo "コンテナ数: $(($${USER_COUNT} + 1)) ($${USER_COUNT} ユーザー + admin)"
 echo "Admin: https://<PUBLIC_IP>:8000/"
-echo "参加者: https://<PUBLIC_IP>:800X/ (ポート 8001〜$((8000 + USER_COUNT)))"
+echo "参加者: https://<PUBLIC_IP>:800X/ (ポート $((8000 + USER_START_NUMBER))〜$((8000 + USER_START_NUMBER + USER_COUNT - 1)))"
 echo "ステータス: https://<PUBLIC_IP>/"

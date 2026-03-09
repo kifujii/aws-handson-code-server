@@ -21,11 +21,11 @@ resource "random_password" "admin" {
 
 resource "aws_iam_user" "handson" {
   count = var.user_count
-  name  = format("${var.project_name}-user%02d", count.index + 1)
+  name  = format("${var.project_name}-user%02d", count.index + var.user_start_number)
   path  = "/${var.project_name}/"
 
   tags = {
-    Name    = format("${var.project_name}-user%02d", count.index + 1)
+    Name    = format("${var.project_name}-user%02d", count.index + var.user_start_number)
     Purpose = "handson"
   }
 }

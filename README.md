@@ -160,6 +160,7 @@ vi .env
 | `AWS_SECRET_ACCESS_KEY` | **必須** | - | 管理者の AWS シークレットキー |
 | `AWS_DEFAULT_REGION` | **必須** | ap-northeast-1 | AWS リージョン |
 | `TF_VAR_user_count` | | 20 | 参加者数 |
+| `TF_VAR_user_start_number` | | 1 | ユーザー番号の開始値 (複数環境でユーザーを分ける場合に使用) |
 | `TF_VAR_aws_region` | | ap-northeast-1 | AWS リージョン |
 | `TF_VAR_instance_type` | | m6i.8xlarge | EC2 インスタンスタイプ |
 | `TF_VAR_volume_size` | | 300 | EBS ボリュームサイズ (GB) |
@@ -174,6 +175,12 @@ vi .env
 > | 未設定 (デフォルト) | SSH ポートを閉じる | 本番ハンズオン |
 > | `'203.0.113.0/32'` | 指定 IP のみ SSH 許可 | 管理者のみアクセス |
 > | `'0.0.0.0/0'` | どこからでも SSH 可能 | 検証・デバッグ用 |
+
+> **`TF_VAR_user_start_number` について**: 複数の AWS 環境でユーザーを分割する場合に使用します。
+> | 環境 | `user_start_number` | `user_count` | 作成されるユーザー | ポート範囲 |
+> |------|:-------------------:|:------------:|-------------------|-----------|
+> | 環境A | 1 | 10 | user01〜user10 | 8001〜8010 |
+> | 環境B | 11 | 10 | user11〜user20 | 8011〜8020 |
 
 ### Step 2: 環境変数の読み込み + 認証確認
 
