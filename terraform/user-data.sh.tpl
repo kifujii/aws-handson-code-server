@@ -627,6 +627,8 @@ cat >> "$${WORK_DIR}/docker-compose.yml" << COMPOSE_ADMIN
     restart: unless-stopped
     environment:
       - PASSWORD=$${ADMIN_PASSWORD}
+      - PREFIX=admin
+      - TF_VAR_prefix=admin
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - admin-workspace:/home/coder/workspace
@@ -647,6 +649,8 @@ for i in $(seq 0 $(($${USER_COUNT} - 1))); do
     restart: unless-stopped
     environment:
       - PASSWORD=$${PASSWORD}
+      - PREFIX=$${USER_NAME}
+      - TF_VAR_prefix=$${USER_NAME}
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - $${USER_NAME}-workspace:/home/coder/workspace
@@ -743,6 +747,73 @@ else
 fi
 RESET_EOF
 chmod +x "$${WORK_DIR}/reset-user.sh"
+
+# ---------------------------------------------------------------------------
+# 8.7 ワークショップ資材の事前配置
+# ---------------------------------------------------------------------------
+start_step "8.7"
+
+# ワークスペース初期化スクリプトをホストに作成
+cat > "$${WORK_DIR}/init-workspace.sh" << 'INITWS_EOF'
+#!/bin/bash
+set -e
+USER_PREFIX="$1"
+WORKSPACE="/home/coder/workspace"
+cd "$WORKSPACE"
+
+# ワークショップ資材のクローン (CLAUDE.md の有無で判定)
+if [ ! -f "$WORKSPACE/CLAUDE.md" ]; then
+  git clone --depth 1 https://github.com/kifujii/ai_agentic_development.git tmp 2>/dev/null
+  cp -rn tmp/. . 2>/dev/null || true
+  rm -rf tmp
+fi
+
+# .env の作成 (PREFIX を自動設定)
+if [ -f "$WORKSPACE/.env.template" ] && [ ! -f "$WORKSPACE/.env" ]; then
+  sed "s/PREFIX=user01/PREFIX=$USER_PREFIX/" "$WORKSPACE/.env.template" > "$WORKSPACE/.env"
+fi
+
+# 作業ディレクトリの作成
+mkdir -p "$WORKSPACE/terraform" "$WORKSPACE/ansible" "$WORKSPACE/keys"
+
+# ~/.bashrc に .env 自動読み込みを追加
+if ! grep -q ".envファイルを自動的に読み込む" ~/.bashrc 2>/dev/null; then
+  printf '\n# .envファイルを自動的に読み込む\nif [ -f "/home/coder/workspace/.env" ]; then\n  set -a\n  source "/home/coder/workspace/.env"\n  set +a\n  [ -n "$${PREFIX:-}" ] && export TF_VAR_prefix="$PREFIX"\nfi\n' >> ~/.bashrc
+fi
+
+# Claude Code オンボーディングスキップ
+CLAUDE_GLOBAL="/home/coder/.claude"
+CLAUDE_CFG="$CLAUDE_GLOBAL/claude.json"
+mkdir -p "$CLAUDE_GLOBAL"
+if [ -f "$CLAUDE_CFG" ]; then
+  jq '.hasCompletedOnboarding = true | .hasTrustDialogHooksAccepted = true' \
+    "$CLAUDE_CFG" > "$CLAUDE_CFG.tmp" && mv "$CLAUDE_CFG.tmp" "$CLAUDE_CFG"
+else
+  echo '{"hasCompletedOnboarding":true,"hasTrustDialogHooksAccepted":true}' > "$CLAUDE_CFG"
+fi
+INITWS_EOF
+chmod +x "$${WORK_DIR}/init-workspace.sh"
+
+# 各ユーザーのワークスペースを初期化
+for i in $(seq 0 $(($${USER_COUNT} - 1))); do
+  USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
+  CONTAINER="handson-$${USER_NAME}"
+
+  echo "[$${USER_NAME}] ワークスペース初期化中..."
+  docker cp "$${WORK_DIR}/init-workspace.sh" "$${CONTAINER}:/tmp/init-workspace.sh"
+  docker exec "$${CONTAINER}" bash /tmp/init-workspace.sh "$${USER_NAME}" || {
+    echo "警告: $${USER_NAME} のワークスペース初期化に失敗しました"
+  }
+done
+
+# 管理者環境も初期化
+echo "[admin] ワークスペース初期化中..."
+docker cp "$${WORK_DIR}/init-workspace.sh" "handson-admin:/tmp/init-workspace.sh"
+docker exec "handson-admin" bash /tmp/init-workspace.sh "admin" || {
+  echo "警告: admin のワークスペース初期化に失敗しました"
+}
+
+complete_step "8.7" "ワークショップ資材を $${USER_COUNT} ユーザー + admin に配置"
 
 # ---------------------------------------------------------------------------
 # 9. 最終確認・完了マーカー作成
