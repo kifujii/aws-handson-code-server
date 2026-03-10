@@ -681,6 +681,70 @@ complete_step 8 "全コンテナ起動"
 docker compose ps
 
 # ---------------------------------------------------------------------------
+# 8.5 リセットスクリプトの配置
+# ---------------------------------------------------------------------------
+cat > "$${WORK_DIR}/reset-user.sh" << 'RESET_EOF'
+#!/bin/bash
+# =============================================================================
+# reset-user.sh - ユーザーのワークスペースをリセット (.claude 以外を削除)
+#
+# コンテナを停止してから一時コンテナでクリーンアップし、再起動します。
+# code-server のファイルロックやキャッシュとの競合を避けるため、
+# 稼働中のコンテナに対して直接ファイル削除は行いません。
+#
+# 使い方:
+#   sudo /opt/handson/reset-user.sh user01     # 特定ユーザーのみ
+#   sudo /opt/handson/reset-user.sh admin       # 管理者環境
+#   sudo /opt/handson/reset-user.sh all         # 全ユーザー (admin除く)
+# =============================================================================
+
+set -euo pipefail
+
+COMPOSE_DIR="/opt/handson"
+TARGET="${1:-}"
+
+if [ -z "$TARGET" ]; then
+  echo "Usage: sudo $0 <username|admin|all>"
+  echo ""
+  echo "  例: sudo $0 user01   # user01 のワークスペースをリセット"
+  echo "  例: sudo $0 admin    # 管理者環境をリセット"
+  echo "  例: sudo $0 all      # 全受講者をリセット (admin除く)"
+  exit 1
+fi
+
+reset_workspace() {
+  local name="$1"
+  local service="code-server-${name}"
+
+  echo "=== [${name}] リセット開始 ==="
+
+  echo "[${name}] コンテナを停止中..."
+  cd "$COMPOSE_DIR"
+  docker compose stop "$service"
+
+  echo "[${name}] ワークスペースをリセット中 (.claude は保持)..."
+  docker compose run --rm --no-deps -T "$service" \
+    sh -c 'find /home/coder/workspace -mindepth 1 -maxdepth 1 ! -name ".claude" -exec rm -rf {} +'
+
+  echo "[${name}] コンテナを再起動中..."
+  docker compose start "$service"
+
+  echo "=== [${name}] リセット完了 ==="
+  echo ""
+}
+
+if [ "$TARGET" = "all" ]; then
+  for service in $(cd "$COMPOSE_DIR" && docker compose config --services | grep '^code-server-user'); do
+    name="${service#code-server-}"
+    reset_workspace "$name"
+  done
+else
+  reset_workspace "$TARGET"
+fi
+RESET_EOF
+chmod +x "$${WORK_DIR}/reset-user.sh"
+
+# ---------------------------------------------------------------------------
 # 9. 最終確認・完了マーカー作成
 # ---------------------------------------------------------------------------
 start_step 9

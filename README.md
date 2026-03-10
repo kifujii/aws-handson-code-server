@@ -99,6 +99,7 @@ graph TB
 | IAM | IAMユーザー x N | コンソールアクセス無効・プログラムアクセスのみ |
 | | IAMポリシー | Bedrock + EC2/VPC + IAM(ロール・プロファイル管理) + SSM + CloudWatch/Logs |
 | | アクセスキー x N | ユーザーごとに自動生成 |
+| ストレージ | S3 バケット | Terraform state 保存用 (バージョニング有効・暗号化有効) |
 
 EC2 起動後、user-data スクリプトにより以下が自動構築されます。
 
@@ -111,6 +112,7 @@ EC2 起動後、user-data スクリプトにより以下が自動構築されま
 | code-server-admin コンテナ | 管理者用 VSCode 環境 (AdministratorAccess 相当の権限) |
 | AWS クレデンシャル | 各コンテナに `~/.aws/credentials` を配置済み |
 | Claude Code 設定 | 各コンテナに `.claude/settings.local.json` を配置済み |
+| reset-user.sh | ワークスペースリセットスクリプト (.claude 保持) |
 | Swap 8GB | メモリスパイク対策 |
 
 ## 事前準備
@@ -159,6 +161,7 @@ vi .env
 | `AWS_ACCESS_KEY_ID` | **必須** | - | 管理者の AWS アクセスキー |
 | `AWS_SECRET_ACCESS_KEY` | **必須** | - | 管理者の AWS シークレットキー |
 | `AWS_DEFAULT_REGION` | **必須** | ap-northeast-1 | AWS リージョン |
+| `TF_STATE_BUCKET` | **必須** | - | Terraform state を保存する S3 バケット名 |
 | `TF_VAR_user_count` | | 20 | 参加者数 |
 | `TF_VAR_user_start_number` | | 1 | ユーザー番号の開始値 (複数環境でユーザーを分ける場合に使用) |
 | `TF_VAR_aws_region` | | ap-northeast-1 | AWS リージョン |
@@ -204,20 +207,30 @@ aws sts get-caller-identity
 
 エラーが出る場合は `.env` の `AWS_ACCESS_KEY_ID` と `AWS_SECRET_ACCESS_KEY` を確認してください。特に **シングルクォート (`'`) で値を囲んでいるか** を確認してください (シークレットキーに `+` や `/` 等の特殊文字が含まれる場合、ダブルクォートだとシェルに解釈されてエラーになります)。
 
-### Step 3: Terraform 初期化 + 環境構築
+### Step 3: S3 バックエンド初期化
+
+Terraform の state ファイルは S3 で管理します。以下のスクリプトが S3 バケットの作成と Terraform の初期化を行います。
 
 ```bash
-# Terraform 初期化 (初回のみ)
-cd terraform
-terraform init
+./scripts/init-backend.sh
+```
 
-# 環境構築
+このスクリプトは以下を自動で行います:
+1. S3 バケットが存在しない場合は作成 (バージョニング有効・暗号化有効・パブリックアクセスブロック済み)
+2. `terraform init` を S3 バックエンド設定付きで実行
+
+> **注意**: state ファイルの S3 キーは `{project_name}/terraform.tfstate` になります。複数環境を同じバケットで管理する場合は `TF_VAR_project_name` を環境ごとに変えてください。
+
+### Step 4: 環境構築
+
+```bash
+cd terraform
 terraform apply
 ```
 
 確認プロンプトで `yes` を入力すると構築が開始されます。Terraform の処理は約 2〜3 分で完了します。
 
-### Step 4: セットアップ完了を待つ
+### Step 5: セットアップ完了を待つ
 
 Terraform 完了後、EC2 内で user-data スクリプトが自動実行されます (約 10〜15 分)。
 
@@ -240,7 +253,7 @@ terraform output setup_status_url
 | ✅ **セットアップ完了** | 緑色バナー + 全ステップ完了 | 参加者がアクセス可能 |
 | ❌ **セットアップ失敗** | 赤色バナー + エラー詳細 | 失敗ステップとエラー内容を表示 |
 
-> **注意**: ステータスページは TLS 証明書生成 (Step 4) 以降にアクセス可能になります。それ以前 (約 2〜3 分) はアクセスできません。
+> **注意**: ステータスページは TLS 証明書生成以降にアクセス可能になります。EC2 起動後 約 2〜3 分はアクセスできません。
 
 #### SSH で確認 (admin_cidr 設定時)
 
@@ -258,7 +271,7 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'cat /var/log/handson-setup.log'
 ```
 
-### Step 5: 参加者への配布情報を取得
+### Step 6: 参加者への配布情報を取得
 
 ```bash
 terraform output -json credentials_sheet \
@@ -275,7 +288,7 @@ terraform output -json credentials_sheet \
 
 この一覧を参加者に配布してください。
 
-### Step 6: 管理者用環境の情報を取得
+### Step 7: 管理者用環境の情報を取得
 
 受講者の環境とは別に、AdministratorAccess 相当の権限を持つ管理者用 code-server 環境が用意されます。受講者の権限が不足した場合のバックアップとして使用できます。
 
@@ -336,12 +349,16 @@ source ../.env
 terraform destroy
 ```
 
-### 3. Terraform state ファイルの削除
+### 3. S3 上の state ファイルの削除 (任意)
 
-`terraform.tfstate` には IAM アクセスキーが平文で含まれます。`terraform destroy` 完了後、state ファイルも削除してください。
+state ファイルは S3 バケットに保存されており、IAM アクセスキーが含まれます。`terraform destroy` 完了後、不要であれば S3 バケットごと削除してください。
 
 ```bash
-rm -f terraform.tfstate terraform.tfstate.backup
+# バケット内のオブジェクト (バージョン含む) を削除してからバケットを削除
+aws s3api delete-objects --bucket "$TF_STATE_BUCKET" \
+  --delete "$(aws s3api list-object-versions --bucket "$TF_STATE_BUCKET" \
+    --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)"
+aws s3api delete-bucket --bucket "$TF_STATE_BUCKET"
 ```
 
 ## トラブルシューティング
@@ -406,6 +423,27 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'cd /opt/handson && sudo docker compose restart code-server-user01'
 ```
+
+### ユーザーのワークスペースをリセットしたい
+
+ハンズオン中にフォルダ構成が崩れた場合、`.claude` 設定を保持したままワークスペースを初期状態に戻せます。
+リセットスクリプトはコンテナの停止→クリーンアップ→再起動を行うため、ファイルロックの問題が発生しません。
+
+```bash
+# 特定ユーザーのリセット
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/reset-user.sh user01'
+
+# 管理者環境のリセット
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/reset-user.sh admin'
+
+# 全受講者を一括リセット (admin除く)
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/reset-user.sh all'
+```
+
+> **動作**: コンテナを停止 → `/home/coder/workspace` 内の `.claude` ディレクトリ以外をすべて削除 → コンテナを再起動
 
 ## コスト見積もり
 
