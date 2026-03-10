@@ -701,7 +701,7 @@ cat > "$${WORK_DIR}/reset-user.sh" << 'RESET_EOF'
 set -euo pipefail
 
 COMPOSE_DIR="/opt/handson"
-TARGET="${1:-}"
+TARGET="$${1:-}"
 
 if [ -z "$TARGET" ]; then
   echo "Usage: sudo $0 <username|admin|all>"
@@ -714,28 +714,28 @@ fi
 
 reset_workspace() {
   local name="$1"
-  local service="code-server-${name}"
+  local service="code-server-$${name}"
 
-  echo "=== [${name}] リセット開始 ==="
+  echo "=== [$${name}] リセット開始 ==="
 
-  echo "[${name}] コンテナを停止中..."
+  echo "[$${name}] コンテナを停止中..."
   cd "$COMPOSE_DIR"
   docker compose stop "$service"
 
-  echo "[${name}] ワークスペースをリセット中 (.claude は保持)..."
+  echo "[$${name}] ワークスペースをリセット中 (.claude は保持)..."
   docker compose run --rm --no-deps -T "$service" \
     sh -c 'find /home/coder/workspace -mindepth 1 -maxdepth 1 ! -name ".claude" -exec rm -rf {} +'
 
-  echo "[${name}] コンテナを再起動中..."
+  echo "[$${name}] コンテナを再起動中..."
   docker compose start "$service"
 
-  echo "=== [${name}] リセット完了 ==="
+  echo "=== [$${name}] リセット完了 ==="
   echo ""
 }
 
 if [ "$TARGET" = "all" ]; then
   for service in $(cd "$COMPOSE_DIR" && docker compose config --services | grep '^code-server-user'); do
-    name="${service#code-server-}"
+    name="$${service#code-server-}"
     reset_workspace "$name"
   done
 else
