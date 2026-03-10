@@ -776,9 +776,31 @@ fi
 # 作業ディレクトリの作成
 mkdir -p "$WORKSPACE/terraform" "$WORKSPACE/ansible" "$WORKSPACE/keys"
 
-# ~/.bashrc に .env 自動読み込みを追加
+# ~/.bashrc に .env 自動読み込みとエイリアスを追加
 if ! grep -q ".envファイルを自動的に読み込む" ~/.bashrc 2>/dev/null; then
-  printf '\n# .envファイルを自動的に読み込む\nif [ -f "/home/coder/workspace/.env" ]; then\n  set -a\n  source "/home/coder/workspace/.env"\n  set +a\n  [ -n "$${PREFIX:-}" ] && export TF_VAR_prefix="$PREFIX"\nfi\n' >> ~/.bashrc
+  cat >> ~/.bashrc << 'BASHRC_APPEND'
+
+# .envファイルを自動的に読み込む
+if [ -f "/home/coder/workspace/.env" ]; then
+  set -a
+  source "/home/coder/workspace/.env"
+  set +a
+  [ -n "$${PREFIX:-}" ] && export TF_VAR_prefix="$PREFIX"
+fi
+
+# エイリアス
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias tf='terraform'
+alias tfi='terraform init'
+alias tfp='terraform plan'
+alias tfa='terraform apply'
+alias tfd='terraform destroy'
+alias ap='ansible-playbook'
+BASHRC_APPEND
 fi
 
 # Claude Code オンボーディングスキップ
