@@ -5,6 +5,8 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  backend "s3" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -118,11 +120,20 @@ resource "aws_security_group" "handson" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 参加者用ポート (8001〜8000+user_count)
+  # 管理者用ポート (8000)
+  ingress {
+    description = "Code Server port for admin"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # 参加者用ポート (8000+user_start_number 〜 8000+user_start_number+user_count-1)
   ingress {
     description = "Code Server ports for participants"
-    from_port   = 8001
-    to_port     = 8000 + var.user_count
+    from_port   = 8000 + var.user_start_number
+    to_port     = 8000 + var.user_start_number + var.user_count - 1
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -202,11 +213,17 @@ resource "aws_instance" "handson" {
   # cloud-init が自動的に gzip を検知・展開する
   user_data_base64 = base64gzip(templatefile("${path.module}/user-data.sh.tpl", {
     users_json_b64 = base64encode(jsonencode([for i in range(var.user_count) : {
-      name       = format("user%02d", i + 1)
+      name       = format("user%02d", i + var.user_start_number)
       access_key = aws_iam_access_key.handson[i].id
       secret_key = aws_iam_access_key.handson[i].secret
       password   = random_password.code_server[i].result
     }]))
+    user_start_number = var.user_start_number
+    admin_json_b64 = base64encode(jsonencode({
+      access_key = var.admin_access_key
+      secret_key = var.admin_secret_key
+      password   = random_password.admin.result
+    }))
     aws_account_id = data.aws_caller_identity.current.account_id
     aws_region     = var.aws_region
   }))

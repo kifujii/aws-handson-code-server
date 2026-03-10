@@ -3,9 +3,11 @@
 # user-data.sh.tpl - ハンズオン用 code-server 環境自動セットアップ
 #
 # Terraform templatefile() で以下の変数が注入される:
-#   - users_json_b64 : ユーザー情報のBase64エンコードJSON配列
-#   - aws_account_id : AWSアカウントID
-#   - aws_region     : AWSリージョン
+#   - users_json_b64    : ユーザー情報のBase64エンコードJSON配列
+#   - admin_json_b64    : 管理者情報のBase64エンコードJSON (admin権限)
+#   - user_start_number : ユーザー番号の開始値 (ポート計算に使用)
+#   - aws_account_id    : AWSアカウントID
+#   - aws_region        : AWSリージョン
 #
 # セットアップ状態はブラウザから確認可能:
 #   https://<EC2のIP>/   → ステータスページ (セットアップ中)
@@ -24,6 +26,8 @@ STATUS_FILE="$${WORK_DIR}/setup-status"
 STATE_FILE="$${WORK_DIR}/setup-state"
 ERROR_FILE="$${WORK_DIR}/setup-error"
 USERS_JSON=$(echo "${users_json_b64}" | base64 -d)
+ADMIN_JSON=$(echo "${admin_json_b64}" | base64 -d)
+USER_START_NUMBER="${user_start_number}"
 AWS_ACCOUNT_ID="${aws_account_id}"
 AWS_REGION="${aws_region}"
 
@@ -444,7 +448,45 @@ CLAUDE_EOF
   chown -R 1000:1000 "$${WORK_DIR}/credentials/$${USER_NAME}/claude"
   chmod -R 755 "$${WORK_DIR}/credentials/$${USER_NAME}/claude"
 done
-complete_step 5 "$${USER_COUNT} ユーザー分"
+
+# 管理者用の設定ファイル (admin権限)
+ADMIN_ACCESS_KEY=$(echo "$${ADMIN_JSON}" | jq -r '.access_key')
+ADMIN_SECRET_KEY=$(echo "$${ADMIN_JSON}" | jq -r '.secret_key')
+
+ADMIN_CRED_DIR="$${WORK_DIR}/credentials/admin/aws"
+mkdir -p "$${ADMIN_CRED_DIR}"
+
+cat > "$${ADMIN_CRED_DIR}/credentials" << AWSCRED_EOF
+[default]
+aws_access_key_id = $${ADMIN_ACCESS_KEY}
+aws_secret_access_key = $${ADMIN_SECRET_KEY}
+AWSCRED_EOF
+
+cat > "$${ADMIN_CRED_DIR}/config" << AWSCONF_EOF
+[default]
+region = $${AWS_REGION}
+output = json
+AWSCONF_EOF
+
+ADMIN_CLAUDE_DIR="$${WORK_DIR}/credentials/admin/claude"
+mkdir -p "$${ADMIN_CLAUDE_DIR}"
+
+cat > "$${ADMIN_CLAUDE_DIR}/settings.local.json" << CLAUDE_EOF
+{
+    "env": {
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "false",
+        "CLAUDE_CODE_USE_BEDROCK": "true",
+        "AWS_REGION": "$${AWS_REGION}",
+        "ANTHROPIC_MODEL": "arn:aws:bedrock:$${AWS_REGION}:$${AWS_ACCOUNT_ID}:inference-profile/jp.anthropic.claude-sonnet-4-6"
+    }
+}
+CLAUDE_EOF
+
+chown -R 1000:1000 "$${WORK_DIR}/credentials/admin/aws"
+chown -R 1000:1000 "$${WORK_DIR}/credentials/admin/claude"
+chmod -R 755 "$${WORK_DIR}/credentials/admin/claude"
+
+complete_step 5 "$${USER_COUNT} ユーザー分 + admin"
 
 # ---------------------------------------------------------------------------
 # 6. nginx.conf の動的生成 (ポートベースルーティング)
@@ -470,10 +512,10 @@ server {
 }
 NGINX_HEAD
 
-# 各ユーザー用サーバーブロック (ポート8001, 8002, ...)
+# 各ユーザー用サーバーブロック
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
   USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
-  USER_PORT=$((8001 + i))
+  USER_PORT=$((8000 + USER_START_NUMBER + i))
 
   cat >> "$${WORK_DIR}/nginx.conf" << NGINX_USER
 server {
@@ -501,7 +543,33 @@ server {
 NGINX_USER
 done
 
-complete_step 6 "$${USER_COUNT} ユーザー分のサーバーブロック生成 (ポート 8001-$((8000 + USER_COUNT)))"
+# 管理者用サーバーブロック (ポート 8000)
+cat >> "$${WORK_DIR}/nginx.conf" << NGINX_ADMIN
+server {
+    listen 8000 ssl;
+    ssl_certificate     /etc/nginx/ssl/server.crt;
+    ssl_certificate_key /etc/nginx/ssl/server.key;
+
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_connect_timeout 60s;
+
+    location / {
+        proxy_pass http://code-server-admin:8080/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$http_host;
+        proxy_set_header Accept-Encoding gzip;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+    }
+}
+NGINX_ADMIN
+
+complete_step 6 "$${USER_COUNT} ユーザー + admin のサーバーブロック生成 (ポート 8000, $((8000 + USER_START_NUMBER))-$((8000 + USER_START_NUMBER + USER_COUNT - 1)))"
 
 # ---------------------------------------------------------------------------
 # 7. docker-compose.yml の動的生成
@@ -519,9 +587,12 @@ services:
       - "443:443"
 COMPOSE_HEAD
 
+# 管理者ポートマッピング
+echo '      - "8000:8000"' >> "$${WORK_DIR}/docker-compose.yml"
+
 # nginx のユーザーポートマッピングを追加
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
-  USER_PORT=$((8001 + i))
+  USER_PORT=$((8000 + USER_START_NUMBER + i))
   echo "      - \"$${USER_PORT}:$${USER_PORT}\"" >> "$${WORK_DIR}/docker-compose.yml"
 done
 
@@ -533,6 +604,10 @@ cat >> "$${WORK_DIR}/docker-compose.yml" << 'COMPOSE_NGINX_VOL'
     depends_on:
 COMPOSE_NGINX_VOL
 
+# nginx の depends_on に管理者サービスを追加
+echo "      code-server-admin:" >> "$${WORK_DIR}/docker-compose.yml"
+echo "        condition: service_started" >> "$${WORK_DIR}/docker-compose.yml"
+
 # nginx の depends_on にユーザーサービスを追加
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
   USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
@@ -541,6 +616,24 @@ for i in $(seq 0 $(($${USER_COUNT} - 1))); do
 done
 
 echo "" >> "$${WORK_DIR}/docker-compose.yml"
+
+# 管理者用サービス定義
+ADMIN_PASSWORD=$(echo "$${ADMIN_JSON}" | jq -r '.password')
+
+cat >> "$${WORK_DIR}/docker-compose.yml" << COMPOSE_ADMIN
+  code-server-admin:
+    image: handson-code-server:latest
+    container_name: handson-admin
+    restart: unless-stopped
+    environment:
+      - PASSWORD=$${ADMIN_PASSWORD}
+    command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
+    volumes:
+      - admin-workspace:/home/coder/workspace
+      - ./credentials/admin/aws:/home/coder/.aws:ro
+      - ./credentials/admin/claude:/home/coder/workspace/.claude
+
+COMPOSE_ADMIN
 
 # 各ユーザーのサービス定義 (--base-path 不要、ルートパスで動作)
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
@@ -565,6 +658,7 @@ done
 
 # volumes 定義
 echo "volumes:" >> "$${WORK_DIR}/docker-compose.yml"
+echo "  admin-workspace:" >> "$${WORK_DIR}/docker-compose.yml"
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do
   USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
   echo "  $${USER_NAME}-workspace:" >> "$${WORK_DIR}/docker-compose.yml"
@@ -587,13 +681,77 @@ complete_step 8 "全コンテナ起動"
 docker compose ps
 
 # ---------------------------------------------------------------------------
+# 8.5 リセットスクリプトの配置
+# ---------------------------------------------------------------------------
+cat > "$${WORK_DIR}/reset-user.sh" << 'RESET_EOF'
+#!/bin/bash
+# =============================================================================
+# reset-user.sh - ユーザーのワークスペースをリセット (.claude 以外を削除)
+#
+# コンテナを停止してから一時コンテナでクリーンアップし、再起動します。
+# code-server のファイルロックやキャッシュとの競合を避けるため、
+# 稼働中のコンテナに対して直接ファイル削除は行いません。
+#
+# 使い方:
+#   sudo /opt/handson/reset-user.sh user01     # 特定ユーザーのみ
+#   sudo /opt/handson/reset-user.sh admin       # 管理者環境
+#   sudo /opt/handson/reset-user.sh all         # 全ユーザー (admin除く)
+# =============================================================================
+
+set -euo pipefail
+
+COMPOSE_DIR="/opt/handson"
+TARGET="$${1:-}"
+
+if [ -z "$TARGET" ]; then
+  echo "Usage: sudo $0 <username|admin|all>"
+  echo ""
+  echo "  例: sudo $0 user01   # user01 のワークスペースをリセット"
+  echo "  例: sudo $0 admin    # 管理者環境をリセット"
+  echo "  例: sudo $0 all      # 全受講者をリセット (admin除く)"
+  exit 1
+fi
+
+reset_workspace() {
+  local name="$1"
+  local service="code-server-$${name}"
+
+  echo "=== [$${name}] リセット開始 ==="
+
+  echo "[$${name}] コンテナを停止中..."
+  cd "$COMPOSE_DIR"
+  docker compose stop "$service"
+
+  echo "[$${name}] ワークスペースをリセット中 (.claude は保持)..."
+  docker compose run --rm --no-deps -T --entrypoint sh "$service" \
+    -c 'find /home/coder/workspace -mindepth 1 -maxdepth 1 ! -name ".claude" -exec rm -rf {} +'
+
+  echo "[$${name}] コンテナを再起動中..."
+  docker compose start "$service"
+
+  echo "=== [$${name}] リセット完了 ==="
+  echo ""
+}
+
+if [ "$TARGET" = "all" ]; then
+  for service in $(cd "$COMPOSE_DIR" && docker compose config --services | grep '^code-server-user'); do
+    name="$${service#code-server-}"
+    reset_workspace "$name"
+  done
+else
+  reset_workspace "$TARGET"
+fi
+RESET_EOF
+chmod +x "$${WORK_DIR}/reset-user.sh"
+
+# ---------------------------------------------------------------------------
 # 9. 最終確認・完了マーカー作成
 # ---------------------------------------------------------------------------
 start_step 9
 
 # 全コンテナが起動しているか確認
 RUNNING_COUNT=$(docker compose ps --status running -q 2>/dev/null | wc -l)
-EXPECTED_COUNT=$(($${USER_COUNT} + 1))  # code-server x N + nginx
+EXPECTED_COUNT=$(($${USER_COUNT} + 2))  # code-server x N + admin + nginx
 
 if [ "$${RUNNING_COUNT}" -lt "$${EXPECTED_COUNT}" ]; then
   echo "警告: 起動コンテナ数 ($${RUNNING_COUNT}) が期待値 ($${EXPECTED_COUNT}) より少ないです"
@@ -617,6 +775,7 @@ echo "ハンズオン環境セットアップ完了!"
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
 echo "=========================================="
 echo ""
-echo "コンテナ数: $${USER_COUNT}"
-echo "アクセス: https://<PUBLIC_IP>:800X/ (ポート 8001〜$((8000 + USER_COUNT)))"
+echo "コンテナ数: $(($${USER_COUNT} + 1)) ($${USER_COUNT} ユーザー + admin)"
+echo "Admin: https://<PUBLIC_IP>:8000/"
+echo "参加者: https://<PUBLIC_IP>:800X/ (ポート $((8000 + USER_START_NUMBER))〜$((8000 + USER_START_NUMBER + USER_COUNT - 1)))"
 echo "ステータス: https://<PUBLIC_IP>/"
