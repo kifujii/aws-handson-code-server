@@ -44,6 +44,11 @@ output "reset_user_command" {
   value       = var.admin_cidr != "" ? "ssh -i key.pem ec2-user@${aws_eip.handson.public_ip} 'sudo /opt/handson/reset-user.sh <username>'" : "SSHアクセスは無効です (admin_cidr が未設定)"
 }
 
+output "update_materials_command" {
+  description = "ワークショップ資材を最新に更新するコマンド (admin_cidr 設定時のみ使用可能)"
+  value       = var.admin_cidr != "" ? "ssh -i key.pem ec2-user@${aws_eip.handson.public_ip} 'sudo /opt/handson/update-materials.sh'" : "SSHアクセスは無効です (admin_cidr が未設定)"
+}
+
 output "setup_status_url" {
   description = "セットアップ状況確認URL (ブラウザで開く)"
   value       = "https://${aws_eip.handson.public_ip}/"

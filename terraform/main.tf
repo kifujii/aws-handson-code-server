@@ -224,8 +224,9 @@ resource "aws_instance" "handson" {
       secret_key = var.admin_secret_key
       password   = random_password.admin.result
     }))
-    aws_account_id = data.aws_caller_identity.current.account_id
-    aws_region     = var.aws_region
+    aws_account_id     = data.aws_caller_identity.current.account_id
+    aws_region         = var.aws_region
+    workshop_repo_url  = var.workshop_repo_url
   }))
 
   tags = {

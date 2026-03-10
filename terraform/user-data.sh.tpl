@@ -8,6 +8,7 @@
 #   - user_start_number : ユーザー番号の開始値 (ポート計算に使用)
 #   - aws_account_id    : AWSアカウントID
 #   - aws_region        : AWSリージョン
+#   - workshop_repo_url : ワークショップ資材のGitリポジトリURL (空文字で配置スキップ)
 #
 # セットアップ状態はブラウザから確認可能:
 #   https://<EC2のIP>/   → ステータスページ (セットアップ中)
@@ -30,6 +31,7 @@ ADMIN_JSON=$(echo "${admin_json_b64}" | base64 -d)
 USER_START_NUMBER="${user_start_number}"
 AWS_ACCOUNT_ID="${aws_account_id}"
 AWS_REGION="${aws_region}"
+WORKSHOP_REPO_URL="${workshop_repo_url}"
 
 mkdir -p "$${WORK_DIR}" "$${STATUS_DIR}"
 
@@ -627,6 +629,8 @@ cat >> "$${WORK_DIR}/docker-compose.yml" << COMPOSE_ADMIN
     restart: unless-stopped
     environment:
       - PASSWORD=$${ADMIN_PASSWORD}
+      - PREFIX=admin
+      - TF_VAR_prefix=admin
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - admin-workspace:/home/coder/workspace
@@ -647,6 +651,8 @@ for i in $(seq 0 $(($${USER_COUNT} - 1))); do
     restart: unless-stopped
     environment:
       - PASSWORD=$${PASSWORD}
+      - PREFIX=$${USER_NAME}
+      - TF_VAR_prefix=$${USER_NAME}
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - $${USER_NAME}-workspace:/home/coder/workspace
@@ -743,6 +749,198 @@ else
 fi
 RESET_EOF
 chmod +x "$${WORK_DIR}/reset-user.sh"
+
+# ---------------------------------------------------------------------------
+# 8.6 ワークショップ資材更新スクリプトの配置
+# ---------------------------------------------------------------------------
+cat > "$${WORK_DIR}/update-materials.sh" << 'UPDATE_EOF'
+#!/bin/bash
+# =============================================================================
+# update-materials.sh - 全コンテナのワークショップ資材を最新に更新
+#
+# .workshop-repo に保持した git リポジトリを pull し、ワークスペースに同期します。
+# ユーザーが作成したファイル (.env, terraform/, ansible/, keys/) は上書きしません。
+# コンテナの再起動は不要です。
+#
+# 使い方:
+#   sudo /opt/handson/update-materials.sh          # 全コンテナ
+#   sudo /opt/handson/update-materials.sh user01   # 特定ユーザーのみ
+# =============================================================================
+
+set -euo pipefail
+
+COMPOSE_DIR="/opt/handson"
+TARGET="$${1:-all}"
+REPO_URL="__WORKSHOP_REPO_URL__"
+
+if [ -z "$REPO_URL" ]; then
+  echo "エラー: ワークショップ資材のリポジトリURLが設定されていません"
+  echo "環境構築時に TF_VAR_workshop_repo_url が空で構築されたため、資材更新は実行できません"
+  exit 1
+fi
+
+sync_materials() {
+  local container="$1"
+  local name="$${container#handson-}"
+
+  echo "=== [$${name}] 資材更新中 ==="
+  docker exec "$container" bash -c '
+    REPO_DIR="/home/coder/.workshop-repo"
+    WORKSPACE="/home/coder/workspace"
+    REPO_URL="__WORKSHOP_REPO_URL__"
+
+    if [ -d "$REPO_DIR/.git" ]; then
+      git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+    else
+      git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
+    fi
+
+    if [ -d "$REPO_DIR" ]; then
+      cd "$REPO_DIR"
+      tar cf - \
+        --exclude=".git" \
+        --exclude=".env" \
+        --exclude="terraform" \
+        --exclude="ansible" \
+        --exclude="keys" \
+        . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+    fi
+  '
+  echo "=== [$${name}] 更新完了 ==="
+}
+
+cd "$COMPOSE_DIR"
+
+if [ "$TARGET" = "all" ]; then
+  for container in $(docker compose ps --format '{{.Name}}' | grep handson-); do
+    sync_materials "$container"
+  done
+else
+  sync_materials "handson-$TARGET"
+fi
+
+echo ""
+echo "資材更新が完了しました"
+UPDATE_EOF
+chmod +x "$${WORK_DIR}/update-materials.sh"
+sed -i "s|__WORKSHOP_REPO_URL__|$${WORKSHOP_REPO_URL}|g" "$${WORK_DIR}/update-materials.sh"
+
+# ---------------------------------------------------------------------------
+# 8.7 ワークショップ資材の事前配置
+# ---------------------------------------------------------------------------
+start_step "8.7"
+
+# ワークスペース初期化スクリプトをホストに作成
+cat > "$${WORK_DIR}/init-workspace.sh" << 'INITWS_EOF'
+#!/bin/bash
+set -e
+USER_PREFIX="$1"
+WORKSPACE="/home/coder/workspace"
+REPO_DIR="/home/coder/.workshop-repo"
+REPO_URL="__WORKSHOP_REPO_URL__"
+
+if [ -n "$REPO_URL" ]; then
+  # ワークショップ資材のクローン/更新 (.workshop-repo に保持)
+  if [ -d "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+  else
+    git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
+  fi
+
+  # 資材をワークスペースにコピー (ユーザーが作成するデータは保護)
+  if [ -d "$REPO_DIR" ]; then
+    cd "$REPO_DIR"
+    tar cf - \
+      --exclude='.git' \
+      --exclude='.env' \
+      --exclude='terraform' \
+      --exclude='ansible' \
+      --exclude='keys' \
+      . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+  fi
+fi
+
+cd "$WORKSPACE"
+
+# .env の作成 (PREFIX を自動設定)
+if [ -f ".env.template" ] && [ ! -f ".env" ]; then
+  sed "s/PREFIX=user01/PREFIX=$USER_PREFIX/" .env.template > .env
+fi
+
+# 作業ディレクトリの作成
+mkdir -p "$WORKSPACE/terraform" "$WORKSPACE/ansible" "$WORKSPACE/keys"
+
+# ~/.bashrc に .env 自動読み込みとエイリアスを追加
+if ! grep -q ".envファイルを自動的に読み込む" ~/.bashrc 2>/dev/null; then
+  cat >> ~/.bashrc << 'BASHRC_APPEND'
+
+# .envファイルを自動的に読み込む
+if [ -f "/home/coder/workspace/.env" ]; then
+  set -a
+  source "/home/coder/workspace/.env"
+  set +a
+  [ -n "$${PREFIX:-}" ] && export TF_VAR_prefix="$PREFIX"
+fi
+
+# エイリアス
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias tf='terraform'
+alias tfi='terraform init'
+alias tfp='terraform plan'
+alias tfa='terraform apply'
+alias tfd='terraform destroy'
+alias ap='ansible-playbook'
+BASHRC_APPEND
+fi
+
+# Claude Code オンボーディング・初回プロンプトをすべてスキップ
+ONBOARDING_JSON='{"hasCompletedOnboarding":true,"hasTrustDialogAccepted":true,"hasTrustDialogHooksAccepted":true,"hasCompletedProjectOnboarding":true,"shiftEnterKeyBindingInstalled":true,"theme":"dark"}'
+
+# ~/.claude/claude.json (新しいバージョン)
+CLAUDE_GLOBAL="/home/coder/.claude"
+CLAUDE_CFG="$CLAUDE_GLOBAL/claude.json"
+mkdir -p "$CLAUDE_GLOBAL"
+if [ -f "$CLAUDE_CFG" ]; then
+  echo "$ONBOARDING_JSON" | jq -s '.[0] * .[1]' "$CLAUDE_CFG" - > "$CLAUDE_CFG.tmp" && mv "$CLAUDE_CFG.tmp" "$CLAUDE_CFG"
+else
+  echo "$ONBOARDING_JSON" > "$CLAUDE_CFG"
+fi
+
+# ~/.claude.json (古いバージョンとの互換性)
+HOME_CFG="/home/coder/.claude.json"
+if [ -f "$HOME_CFG" ]; then
+  echo "$ONBOARDING_JSON" | jq -s '.[0] * .[1]' "$HOME_CFG" - > "$HOME_CFG.tmp" && mv "$HOME_CFG.tmp" "$HOME_CFG"
+else
+  echo "$ONBOARDING_JSON" > "$HOME_CFG"
+fi
+INITWS_EOF
+chmod +x "$${WORK_DIR}/init-workspace.sh"
+sed -i "s|__WORKSHOP_REPO_URL__|$${WORKSHOP_REPO_URL}|g" "$${WORK_DIR}/init-workspace.sh"
+
+# 各ユーザーのワークスペースを初期化
+for i in $(seq 0 $(($${USER_COUNT} - 1))); do
+  USER_NAME=$(echo "$${USERS_JSON}" | jq -r ".[$${i}].name")
+  CONTAINER="handson-$${USER_NAME}"
+
+  echo "[$${USER_NAME}] ワークスペース初期化中..."
+  docker cp "$${WORK_DIR}/init-workspace.sh" "$${CONTAINER}:/tmp/init-workspace.sh"
+  docker exec "$${CONTAINER}" bash /tmp/init-workspace.sh "$${USER_NAME}" || {
+    echo "警告: $${USER_NAME} のワークスペース初期化に失敗しました"
+  }
+done
+
+# 管理者環境も初期化
+echo "[admin] ワークスペース初期化中..."
+docker cp "$${WORK_DIR}/init-workspace.sh" "handson-admin:/tmp/init-workspace.sh"
+docker exec "handson-admin" bash /tmp/init-workspace.sh "admin" || {
+  echo "警告: admin のワークスペース初期化に失敗しました"
+}
+
+complete_step "8.7" "ワークショップ資材を $${USER_COUNT} ユーザー + admin に配置"
 
 # ---------------------------------------------------------------------------
 # 9. 最終確認・完了マーカー作成
