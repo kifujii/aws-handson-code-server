@@ -8,6 +8,7 @@
 #   - user_start_number : ユーザー番号の開始値 (ポート計算に使用)
 #   - aws_account_id    : AWSアカウントID
 #   - aws_region        : AWSリージョン
+#   - workshop_repo_url : ワークショップ資材のGitリポジトリURL (空文字で配置スキップ)
 #
 # セットアップ状態はブラウザから確認可能:
 #   https://<EC2のIP>/   → ステータスページ (セットアップ中)
@@ -30,6 +31,7 @@ ADMIN_JSON=$(echo "${admin_json_b64}" | base64 -d)
 USER_START_NUMBER="${user_start_number}"
 AWS_ACCOUNT_ID="${aws_account_id}"
 AWS_REGION="${aws_region}"
+WORKSHOP_REPO_URL="${workshop_repo_url}"
 
 mkdir -p "$${WORK_DIR}" "$${STATUS_DIR}"
 
@@ -769,7 +771,13 @@ set -euo pipefail
 
 COMPOSE_DIR="/opt/handson"
 TARGET="$${1:-all}"
-REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
+REPO_URL="__WORKSHOP_REPO_URL__"
+
+if [ -z "$REPO_URL" ]; then
+  echo "エラー: ワークショップ資材のリポジトリURLが設定されていません"
+  echo "環境構築時に TF_VAR_workshop_repo_url が空で構築されたため、資材更新は実行できません"
+  exit 1
+fi
 
 sync_materials() {
   local container="$1"
@@ -779,7 +787,7 @@ sync_materials() {
   docker exec "$container" bash -c '
     REPO_DIR="/home/coder/.workshop-repo"
     WORKSPACE="/home/coder/workspace"
-    REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
+    REPO_URL="__WORKSHOP_REPO_URL__"
 
     if [ -d "$REPO_DIR/.git" ]; then
       git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
@@ -815,6 +823,7 @@ echo ""
 echo "資材更新が完了しました"
 UPDATE_EOF
 chmod +x "$${WORK_DIR}/update-materials.sh"
+sed -i "s|__WORKSHOP_REPO_URL__|$${WORKSHOP_REPO_URL}|g" "$${WORK_DIR}/update-materials.sh"
 
 # ---------------------------------------------------------------------------
 # 8.7 ワークショップ資材の事前配置
@@ -828,25 +837,27 @@ set -e
 USER_PREFIX="$1"
 WORKSPACE="/home/coder/workspace"
 REPO_DIR="/home/coder/.workshop-repo"
-REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
+REPO_URL="__WORKSHOP_REPO_URL__"
 
-# ワークショップ資材のクローン/更新 (.workshop-repo に保持)
-if [ -d "$REPO_DIR/.git" ]; then
-  git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
-else
-  git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
-fi
+if [ -n "$REPO_URL" ]; then
+  # ワークショップ資材のクローン/更新 (.workshop-repo に保持)
+  if [ -d "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+  else
+    git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
+  fi
 
-# 資材をワークスペースにコピー (ユーザーが作成するデータは保護)
-if [ -d "$REPO_DIR" ]; then
-  cd "$REPO_DIR"
-  tar cf - \
-    --exclude='.git' \
-    --exclude='.env' \
-    --exclude='terraform' \
-    --exclude='ansible' \
-    --exclude='keys' \
-    . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+  # 資材をワークスペースにコピー (ユーザーが作成するデータは保護)
+  if [ -d "$REPO_DIR" ]; then
+    cd "$REPO_DIR"
+    tar cf - \
+      --exclude='.git' \
+      --exclude='.env' \
+      --exclude='terraform' \
+      --exclude='ansible' \
+      --exclude='keys' \
+      . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+  fi
 fi
 
 cd "$WORKSPACE"
@@ -898,6 +909,7 @@ else
 fi
 INITWS_EOF
 chmod +x "$${WORK_DIR}/init-workspace.sh"
+sed -i "s|__WORKSHOP_REPO_URL__|$${WORKSHOP_REPO_URL}|g" "$${WORK_DIR}/init-workspace.sh"
 
 # 各ユーザーのワークスペースを初期化
 for i in $(seq 0 $(($${USER_COUNT} - 1))); do

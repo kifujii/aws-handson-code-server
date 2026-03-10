@@ -44,6 +44,12 @@ variable "project_name" {
   default     = "handson"
 }
 
+variable "workshop_repo_url" {
+  description = "ワークショップ資材のGitリポジトリURL (空文字の場合は資材配置をスキップ)"
+  type        = string
+  default     = ""
+}
+
 variable "admin_access_key" {
   description = "管理者用code-server環境のAWSアクセスキー (AdministratorAccess相当)"
   type        = string

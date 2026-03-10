@@ -112,7 +112,7 @@ EC2 起動後、user-data スクリプトにより以下が自動構築されま
 | code-server-admin コンテナ | 管理者用 VSCode 環境 (AdministratorAccess 相当の権限) |
 | AWS クレデンシャル | 各コンテナに `~/.aws/credentials` を配置済み |
 | Claude Code 設定 | 各コンテナに `.claude/settings.local.json` を配置済み |
-| ワークショップ資材 | [ai_agentic_development](https://github.com/kifujii/ai_agentic_development) をクローン + `.env` (PREFIX設定済) + 作業ディレクトリ作成 |
+| ワークショップ資材 | `TF_VAR_workshop_repo_url` で指定したリポジトリをクローン + `.env` (PREFIX設定済) + 作業ディレクトリ作成 (空文字でスキップ) |
 | 環境変数 | `PREFIX` / `TF_VAR_prefix` をコンテナ環境変数と `~/.bashrc` で設定済み |
 | Claude Code 初回設定 | オンボーディングダイアログをスキップ済み |
 | reset-user.sh | ワークスペースリセットスクリプト (.claude 保持) |
@@ -171,6 +171,7 @@ vi .env
 | `TF_VAR_instance_type` | | m6i.8xlarge | EC2 インスタンスタイプ |
 | `TF_VAR_volume_size` | | 300 | EBS ボリュームサイズ (GB) |
 | `TF_VAR_project_name` | | handson | リソース名のプレフィックス |
+| `TF_VAR_workshop_repo_url` | | (空文字) | ワークショップ資材の Git リポジトリ URL (空文字で配置スキップ) |
 | `TF_VAR_admin_access_key` | | `$AWS_ACCESS_KEY_ID` | 管理者用 code-server の AWS アクセスキー (自動設定) |
 | `TF_VAR_admin_secret_key` | | `$AWS_SECRET_ACCESS_KEY` | 管理者用 code-server の AWS シークレットキー (自動設定) |
 | `TF_VAR_admin_cidr` | | (未設定) | SSH アクセス元 CIDR (オプション) |
@@ -307,7 +308,7 @@ terraform output -raw admin_password
 
 ### Step 8: ワークショップ資材の更新 (任意)
 
-環境構築後にワークショップ資材 ([ai_agentic_development](https://github.com/kifujii/ai_agentic_development)) が更新された場合、以下のコマンドで全コンテナの資材を最新に更新できます。コンテナの再起動は不要です。
+環境構築後にワークショップ資材 (`TF_VAR_workshop_repo_url` で指定したリポジトリ) が更新された場合、以下のコマンドで全コンテナの資材を最新に更新できます。コンテナの再起動は不要です。
 
 ```bash
 ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
@@ -331,7 +332,7 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 
 | 項目 | 内容 |
 |------|------|
-| ワークショップ資材 | `ai_agentic_development` リポジトリがクローン済み |
+| ワークショップ資材 | `TF_VAR_workshop_repo_url` で指定したリポジトリがクローン済み |
 | `.env` | `PREFIX` が各ユーザーの番号 (例: `user01`) に設定済み |
 | 環境変数 | `PREFIX` / `TF_VAR_prefix` がターミナルで即使用可能 |
 | 作業ディレクトリ | `terraform/`, `ansible/`, `keys/` 作成済み |
