@@ -62,6 +62,15 @@ resource "aws_iam_policy" "handson" {
         ]
       },
       {
+        Sid    = "MarketplaceForBedrock"
+        Effect = "Allow"
+        Action = [
+          "aws-marketplace:ViewSubscriptions",
+          "aws-marketplace:Subscribe"
+        ]
+        Resource = "*"
+      },
+      {
         Sid      = "EC2AndVPC"
         Effect   = "Allow"
         Action   = "ec2:*"
