@@ -749,6 +749,74 @@ RESET_EOF
 chmod +x "$${WORK_DIR}/reset-user.sh"
 
 # ---------------------------------------------------------------------------
+# 8.6 ワークショップ資材更新スクリプトの配置
+# ---------------------------------------------------------------------------
+cat > "$${WORK_DIR}/update-materials.sh" << 'UPDATE_EOF'
+#!/bin/bash
+# =============================================================================
+# update-materials.sh - 全コンテナのワークショップ資材を最新に更新
+#
+# .workshop-repo に保持した git リポジトリを pull し、ワークスペースに同期します。
+# ユーザーが作成したファイル (.env, terraform/, ansible/, keys/) は上書きしません。
+# コンテナの再起動は不要です。
+#
+# 使い方:
+#   sudo /opt/handson/update-materials.sh          # 全コンテナ
+#   sudo /opt/handson/update-materials.sh user01   # 特定ユーザーのみ
+# =============================================================================
+
+set -euo pipefail
+
+COMPOSE_DIR="/opt/handson"
+TARGET="$${1:-all}"
+REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
+
+sync_materials() {
+  local container="$1"
+  local name="$${container#handson-}"
+
+  echo "=== [$${name}] 資材更新中 ==="
+  docker exec "$container" bash -c '
+    REPO_DIR="/home/coder/.workshop-repo"
+    WORKSPACE="/home/coder/workspace"
+    REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
+
+    if [ -d "$REPO_DIR/.git" ]; then
+      git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+    else
+      git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
+    fi
+
+    if [ -d "$REPO_DIR" ]; then
+      cd "$REPO_DIR"
+      tar cf - \
+        --exclude=".git" \
+        --exclude=".env" \
+        --exclude="terraform" \
+        --exclude="ansible" \
+        --exclude="keys" \
+        . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+    fi
+  '
+  echo "=== [$${name}] 更新完了 ==="
+}
+
+cd "$COMPOSE_DIR"
+
+if [ "$TARGET" = "all" ]; then
+  for container in $(docker compose ps --format '{{.Name}}' | grep handson-); do
+    sync_materials "$container"
+  done
+else
+  sync_materials "handson-$TARGET"
+fi
+
+echo ""
+echo "資材更新が完了しました"
+UPDATE_EOF
+chmod +x "$${WORK_DIR}/update-materials.sh"
+
+# ---------------------------------------------------------------------------
 # 8.7 ワークショップ資材の事前配置
 # ---------------------------------------------------------------------------
 start_step "8.7"
@@ -759,18 +827,33 @@ cat > "$${WORK_DIR}/init-workspace.sh" << 'INITWS_EOF'
 set -e
 USER_PREFIX="$1"
 WORKSPACE="/home/coder/workspace"
-cd "$WORKSPACE"
+REPO_DIR="/home/coder/.workshop-repo"
+REPO_URL="https://github.com/kifujii/ai_agentic_development.git"
 
-# ワークショップ資材のクローン (CLAUDE.md の有無で判定)
-if [ ! -f "$WORKSPACE/CLAUDE.md" ]; then
-  git clone --depth 1 https://github.com/kifujii/ai_agentic_development.git tmp 2>/dev/null
-  cp -rn tmp/. . 2>/dev/null || true
-  rm -rf tmp
+# ワークショップ資材のクローン/更新 (.workshop-repo に保持)
+if [ -d "$REPO_DIR/.git" ]; then
+  git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+else
+  git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
 fi
 
+# 資材をワークスペースにコピー (ユーザーが作成するデータは保護)
+if [ -d "$REPO_DIR" ]; then
+  cd "$REPO_DIR"
+  tar cf - \
+    --exclude='.git' \
+    --exclude='.env' \
+    --exclude='terraform' \
+    --exclude='ansible' \
+    --exclude='keys' \
+    . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+fi
+
+cd "$WORKSPACE"
+
 # .env の作成 (PREFIX を自動設定)
-if [ -f "$WORKSPACE/.env.template" ] && [ ! -f "$WORKSPACE/.env" ]; then
-  sed "s/PREFIX=user01/PREFIX=$USER_PREFIX/" "$WORKSPACE/.env.template" > "$WORKSPACE/.env"
+if [ -f ".env.template" ] && [ ! -f ".env" ]; then
+  sed "s/PREFIX=user01/PREFIX=$USER_PREFIX/" .env.template > .env
 fi
 
 # 作業ディレクトリの作成

@@ -305,6 +305,17 @@ terraform output -raw admin_password
 
 > **注意**: 管理者用環境は強い権限を持つため、参加者には URL やパスワードを共有しないでください。
 
+### Step 8: ワークショップ資材の更新 (任意)
+
+環境構築後にワークショップ資材 ([ai_agentic_development](https://github.com/kifujii/ai_agentic_development)) が更新された場合、以下のコマンドで全コンテナの資材を最新に更新できます。コンテナの再起動は不要です。
+
+```bash
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh'
+```
+
+> 参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、上書きされません。
+
 ## 参加者向けの操作方法
 
 ### アクセス手順
