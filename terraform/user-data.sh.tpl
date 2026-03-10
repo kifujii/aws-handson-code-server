@@ -723,8 +723,8 @@ reset_workspace() {
   docker compose stop "$service"
 
   echo "[$${name}] ワークスペースをリセット中 (.claude は保持)..."
-  docker compose run --rm --no-deps -T "$service" \
-    sh -c 'find /home/coder/workspace -mindepth 1 -maxdepth 1 ! -name ".claude" -exec rm -rf {} +'
+  docker compose run --rm --no-deps -T --entrypoint sh "$service" \
+    -c 'find /home/coder/workspace -mindepth 1 -maxdepth 1 ! -name ".claude" -exec rm -rf {} +'
 
   echo "[$${name}] コンテナを再起動中..."
   docker compose start "$service"
