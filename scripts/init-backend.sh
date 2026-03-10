@@ -66,6 +66,7 @@ echo "=== terraform init ==="
 
 cd "$TERRAFORM_DIR"
 terraform init \
+  -reconfigure \
   -backend-config="bucket=${BUCKET}" \
   -backend-config="key=${STATE_KEY}" \
   -backend-config="region=${REGION}" \
