@@ -897,15 +897,25 @@ alias ap='ansible-playbook'
 BASHRC_APPEND
 fi
 
-# Claude Code オンボーディングスキップ
+# Claude Code オンボーディング・初回プロンプトをすべてスキップ
+ONBOARDING_JSON='{"hasCompletedOnboarding":true,"hasTrustDialogAccepted":true,"hasTrustDialogHooksAccepted":true,"hasCompletedProjectOnboarding":true,"shiftEnterKeyBindingInstalled":true,"theme":"dark"}'
+
+# ~/.claude/claude.json (新しいバージョン)
 CLAUDE_GLOBAL="/home/coder/.claude"
 CLAUDE_CFG="$CLAUDE_GLOBAL/claude.json"
 mkdir -p "$CLAUDE_GLOBAL"
 if [ -f "$CLAUDE_CFG" ]; then
-  jq '.hasCompletedOnboarding = true | .hasTrustDialogHooksAccepted = true' \
-    "$CLAUDE_CFG" > "$CLAUDE_CFG.tmp" && mv "$CLAUDE_CFG.tmp" "$CLAUDE_CFG"
+  echo "$ONBOARDING_JSON" | jq -s '.[0] * .[1]' "$CLAUDE_CFG" - > "$CLAUDE_CFG.tmp" && mv "$CLAUDE_CFG.tmp" "$CLAUDE_CFG"
 else
-  echo '{"hasCompletedOnboarding":true,"hasTrustDialogHooksAccepted":true}' > "$CLAUDE_CFG"
+  echo "$ONBOARDING_JSON" > "$CLAUDE_CFG"
+fi
+
+# ~/.claude.json (古いバージョンとの互換性)
+HOME_CFG="/home/coder/.claude.json"
+if [ -f "$HOME_CFG" ]; then
+  echo "$ONBOARDING_JSON" | jq -s '.[0] * .[1]' "$HOME_CFG" - > "$HOME_CFG.tmp" && mv "$HOME_CFG.tmp" "$HOME_CFG"
+else
+  echo "$ONBOARDING_JSON" > "$HOME_CFG"
 fi
 INITWS_EOF
 chmod +x "$${WORK_DIR}/init-workspace.sh"
