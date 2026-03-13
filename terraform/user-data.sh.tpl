@@ -812,7 +812,7 @@ sync_materials() {
 cd "$COMPOSE_DIR"
 
 if [ "$TARGET" = "all" ]; then
-  for container in $(docker compose ps --format '{{.Name}}' | grep handson-); do
+  for container in $(docker compose ps --format '{{.Name}}' | grep -E 'handson-(user|admin)'); do
     sync_materials "$container"
   done
 else
