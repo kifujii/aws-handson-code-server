@@ -44,7 +44,7 @@ resource "aws_iam_access_key" "handson" {
 resource "aws_iam_policy" "handson" {
   name        = "${var.project_name}-policy"
   path        = "/${var.project_name}/"
-  description = "Handson participants policy - Bedrock, EC2/VPC, limited IAM"
+  description = "Handson participants policy - Bedrock, EC2/VPC, Lambda, API Gateway, ELB, Auto Scaling, CloudWatch, IAM"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -118,6 +118,83 @@ resource "aws_iam_policy" "handson" {
         Resource = "*"
       },
       {
+        Sid    = "LambdaAccess"
+        Effect = "Allow"
+        Action = [
+          "lambda:CreateFunction",
+          "lambda:DeleteFunction",
+          "lambda:GetFunction",
+          "lambda:ListFunctions",
+          "lambda:UpdateFunctionCode",
+          "lambda:UpdateFunctionConfiguration",
+          "lambda:InvokeFunction",
+          "lambda:AddPermission",
+          "lambda:RemovePermission",
+          "lambda:GetPolicy"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "APIGatewayAccess"
+        Effect = "Allow"
+        Action = [
+          "apigateway:GET",
+          "apigateway:POST",
+          "apigateway:PUT",
+          "apigateway:DELETE",
+          "apigateway:PATCH"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ELBAccess"
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:CreateLoadBalancer",
+          "elasticloadbalancing:DeleteLoadBalancer",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:CreateTargetGroup",
+          "elasticloadbalancing:DeleteTargetGroup",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:RegisterTargets",
+          "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:DescribeTargetHealth",
+          "elasticloadbalancing:CreateListener",
+          "elasticloadbalancing:DeleteListener",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:ModifyTargetGroup",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:SetSecurityGroups",
+          "elasticloadbalancing:SetSubnets",
+          "elasticloadbalancing:AddTags",
+          "elasticloadbalancing:DescribeTags"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AutoScalingAccess"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:CreateAutoScalingGroup",
+          "autoscaling:DeleteAutoScalingGroup",
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:UpdateAutoScalingGroup",
+          "autoscaling:CreateLaunchConfiguration",
+          "autoscaling:DeleteLaunchConfiguration",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:AttachLoadBalancerTargetGroups",
+          "autoscaling:DetachLoadBalancerTargetGroups",
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup",
+          "autoscaling:PutScalingPolicy",
+          "autoscaling:DeletePolicy",
+          "autoscaling:DescribePolicies",
+          "autoscaling:AttachInstances"
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "CloudWatchAccess"
         Effect = "Allow"
         Action = [
@@ -127,7 +204,11 @@ resource "aws_iam_policy" "handson" {
           "cloudwatch:ListMetrics",
           "cloudwatch:GetMetricData",
           "cloudwatch:GetMetricStatistics",
-          "cloudwatch:PutMetricData"
+          "cloudwatch:PutMetricData",
+          "cloudwatch:PutDashboard",
+          "cloudwatch:DeleteDashboards",
+          "cloudwatch:GetDashboard",
+          "cloudwatch:ListDashboards"
         ]
         Resource = "*"
       },
