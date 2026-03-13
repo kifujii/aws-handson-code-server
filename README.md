@@ -312,9 +312,21 @@ terraform output -raw admin_password
 
 環境構築後にワークショップ資材 (`TF_VAR_workshop_repo_url` で指定したリポジトリ) が更新された場合、以下のコマンドで全コンテナの資材を最新に更新できます。コンテナの再起動は不要です。
 
+> **前提**: SSH アクセスが必要です。`TF_VAR_admin_cidr` を設定して `terraform apply` を実行しておいてください。
+
 ```bash
+# SSH鍵を取得（まだない場合）
+cd terraform
+terraform output -raw ssh_private_key > /tmp/handson-key.pem
+chmod 600 /tmp/handson-key.pem
+
+# 全コンテナを一括更新
 ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'sudo /opt/handson/update-materials.sh'
+
+# 特定ユーザーのみ更新する場合
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh user01'
 ```
 
 > 参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、上書きされません。
