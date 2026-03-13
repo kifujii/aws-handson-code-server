@@ -10,10 +10,14 @@ resource "random_password" "code_server" {
 }
 
 # AWSコンソールログイン用パスワード (ユーザーごとに自動生成)
+# min_upper/min_lower/min_numeric で一般的なパスワードポリシーを満たす
 resource "random_password" "console" {
-  count   = var.user_count
-  length  = 12
-  special = false
+  count       = var.user_count
+  length      = 12
+  special     = false
+  min_upper   = 2
+  min_lower   = 2
+  min_numeric = 2
 }
 
 # 管理者用 code-server のパスワード
@@ -56,14 +60,17 @@ resource "null_resource" "console_login" {
 
   provisioner "local-exec" {
     command = <<EOT
-aws iam create-login-profile \
-  --user-name '${aws_iam_user.handson[count.index].name}' \
-  --password '${random_password.console[count.index].result}' \
-  --no-password-reset-required 2>/dev/null || \
-aws iam update-login-profile \
-  --user-name '${aws_iam_user.handson[count.index].name}' \
-  --password '${random_password.console[count.index].result}' \
-  --no-password-reset-required
+if aws iam get-login-profile --user-name '${aws_iam_user.handson[count.index].name}' 2>/dev/null; then
+  aws iam update-login-profile \
+    --user-name '${aws_iam_user.handson[count.index].name}' \
+    --password '${random_password.console[count.index].result}' \
+    --no-password-reset-required
+else
+  aws iam create-login-profile \
+    --user-name '${aws_iam_user.handson[count.index].name}' \
+    --password '${random_password.console[count.index].result}' \
+    --no-password-reset-required
+fi
 EOT
   }
 }
