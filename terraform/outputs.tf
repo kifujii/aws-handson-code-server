@@ -8,11 +8,14 @@ output "ec2_public_ip" {
 }
 
 output "credentials_sheet" {
-  description = "参加者配布用の URL + パスワード一覧"
+  description = "参加者配布用の URL + パスワード一覧 (code-server + AWSコンソール)"
   value = [for i in range(var.user_count) : {
-    user     = format("user%02d", i + var.user_start_number)
-    url      = format("https://%s:%d/", aws_eip.handson.public_ip, 8000 + var.user_start_number + i)
-    password = random_password.code_server[i].result
+    user              = format("user%02d", i + var.user_start_number)
+    url               = format("https://%s:%d/", aws_eip.handson.public_ip, 8000 + var.user_start_number + i)
+    password          = random_password.code_server[i].result
+    console_login_url = "https://${data.aws_caller_identity.current.account_id}.signin.aws.amazon.com/console"
+    console_user      = format("${var.project_name}-user%02d", i + var.user_start_number)
+    console_password  = random_password.console[i].result
   }]
   sensitive = true
 }

@@ -279,18 +279,20 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 
 ```bash
 terraform output -json credentials_sheet \
-  | jq -r '.[] | "ユーザー: \(.user)  URL: \(.url)  パスワード: \(.password)"'
+  | jq -r '.[] | "【VSCode】ユーザー: \(.user)  URL: \(.url)  パスワード: \(.password)\n【AWSコンソール】URL: \(.console_login_url)  ユーザー名: \(.console_user)  パスワード: \(.console_password)"'
 ```
 
 出力例:
 
 ```
-ユーザー: user01  URL: https://203.0.113.10:8001/  パスワード: Xk9mP2qR
-ユーザー: user02  URL: https://203.0.113.10:8002/  パスワード: Lm3nY8wZ
+【VSCode】ユーザー: user01  URL: https://203.0.113.10:8001/  パスワード: Xk9mP2qR
+【AWSコンソール】URL: https://123456789012.signin.aws.amazon.com/console  ユーザー名: handson-user01  パスワード: AbCdEfGh1234
 ...
 ```
 
 この一覧を参加者に配布してください。
+
+> **注意**: `terraform apply` 後に `./scripts/init-backend.sh` を再実行して null プロバイダーを初期化してから `terraform apply` してください（初回のみ）。
 
 ### Step 7: 管理者用環境の情報を取得
 
