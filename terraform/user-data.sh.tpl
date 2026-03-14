@@ -430,25 +430,8 @@ region = $${AWS_REGION}
 output = json
 AWSCONF_EOF
 
-  # Claude Code 設定ディレクトリ
-  CLAUDE_DIR="$${WORK_DIR}/credentials/$${USER_NAME}/claude"
-  mkdir -p "$${CLAUDE_DIR}"
-
-  cat > "$${CLAUDE_DIR}/settings.local.json" << CLAUDE_EOF
-{
-    "env": {
-        "CLAUDE_CODE_ENABLE_TELEMETRY": "false",
-        "CLAUDE_CODE_USE_BEDROCK": "true",
-        "AWS_REGION": "$${AWS_REGION}",
-        "ANTHROPIC_MODEL": "arn:aws:bedrock:$${AWS_REGION}:$${AWS_ACCOUNT_ID}:inference-profile/jp.anthropic.claude-sonnet-4-6"
-    }
-}
-CLAUDE_EOF
-
   # coder ユーザー (UID 1000) がコンテナ内から書き込めるようパーミッション設定
   chown -R 1000:1000 "$${WORK_DIR}/credentials/$${USER_NAME}/aws"
-  chown -R 1000:1000 "$${WORK_DIR}/credentials/$${USER_NAME}/claude"
-  chmod -R 755 "$${WORK_DIR}/credentials/$${USER_NAME}/claude"
 done
 
 # 管理者用の設定ファイル (admin権限)
@@ -470,23 +453,7 @@ region = $${AWS_REGION}
 output = json
 AWSCONF_EOF
 
-ADMIN_CLAUDE_DIR="$${WORK_DIR}/credentials/admin/claude"
-mkdir -p "$${ADMIN_CLAUDE_DIR}"
-
-cat > "$${ADMIN_CLAUDE_DIR}/settings.local.json" << CLAUDE_EOF
-{
-    "env": {
-        "CLAUDE_CODE_ENABLE_TELEMETRY": "false",
-        "CLAUDE_CODE_USE_BEDROCK": "true",
-        "AWS_REGION": "$${AWS_REGION}",
-        "ANTHROPIC_MODEL": "arn:aws:bedrock:$${AWS_REGION}:$${AWS_ACCOUNT_ID}:inference-profile/jp.anthropic.claude-sonnet-4-6"
-    }
-}
-CLAUDE_EOF
-
 chown -R 1000:1000 "$${WORK_DIR}/credentials/admin/aws"
-chown -R 1000:1000 "$${WORK_DIR}/credentials/admin/claude"
-chmod -R 755 "$${WORK_DIR}/credentials/admin/claude"
 
 complete_step 5 "$${USER_COUNT} ユーザー分 + admin"
 
@@ -631,11 +598,14 @@ cat >> "$${WORK_DIR}/docker-compose.yml" << COMPOSE_ADMIN
       - PASSWORD=$${ADMIN_PASSWORD}
       - PREFIX=admin
       - TF_VAR_prefix=admin
+      - CLAUDE_CODE_ENABLE_TELEMETRY=false
+      - CLAUDE_CODE_USE_BEDROCK=true
+      - AWS_REGION=$${AWS_REGION}
+      - ANTHROPIC_MODEL=arn:aws:bedrock:$${AWS_REGION}:$${AWS_ACCOUNT_ID}:inference-profile/jp.anthropic.claude-sonnet-4-6
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - admin-workspace:/home/coder/workspace
       - ./credentials/admin/aws:/home/coder/.aws:ro
-      - ./credentials/admin/claude:/home/coder/.claude
 
 COMPOSE_ADMIN
 
@@ -653,11 +623,14 @@ for i in $(seq 0 $(($${USER_COUNT} - 1))); do
       - PASSWORD=$${PASSWORD}
       - PREFIX=$${USER_NAME}
       - TF_VAR_prefix=$${USER_NAME}
+      - CLAUDE_CODE_ENABLE_TELEMETRY=false
+      - CLAUDE_CODE_USE_BEDROCK=true
+      - AWS_REGION=$${AWS_REGION}
+      - ANTHROPIC_MODEL=arn:aws:bedrock:$${AWS_REGION}:$${AWS_ACCOUNT_ID}:inference-profile/jp.anthropic.claude-sonnet-4-6
     command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password"]
     volumes:
       - $${USER_NAME}-workspace:/home/coder/workspace
       - ./credentials/$${USER_NAME}/aws:/home/coder/.aws:ro
-      - ./credentials/$${USER_NAME}/claude:/home/coder/.claude
 
 COMPOSE_SVC
 done
