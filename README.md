@@ -58,7 +58,7 @@ graph TB
             IAM01["handson-user01\nコンソール無効"]
             IAM02["handson-user02"]
             IAM20["handson-user20"]
-            POLICY["IAMポリシー\nBedrock InvokeModel\nEC2/VPC操作\nLambda/API Gateway\nELB/Auto Scaling\nIAM (ロール・プロファイル)\nSSM操作\nCloudWatch/Logs"]
+            POLICY["IAMポリシー\nBedrock InvokeModel\nEC2/VPC操作\nLambda/API Gateway\nDynamoDB/S3\nELB/Auto Scaling\nIAM (ロール・ポリシー管理)\nSSM操作\nCloudWatch/Logs"]
         end
 
         BEDROCK["Amazon Bedrock\njp.anthropic.claude-sonnet-4-6"]
@@ -97,7 +97,7 @@ graph TB
 | コンピュート | EC2 (m6i.8xlarge) | 32vCPU / 128GB RAM / 300GB gp3 |
 | | Elastic IP | パブリックIP固定化 (停止・再起動してもIPが変わらない) |
 | IAM | IAMユーザー x N | コンソールアクセス無効・プログラムアクセスのみ |
-| | IAMポリシー | Bedrock + EC2/VPC + Lambda + API Gateway + ELB + Auto Scaling + IAM(ロール・プロファイル管理) + SSM + CloudWatch/Logs/Dashboards |
+| | IAMポリシー | Bedrock + EC2/VPC + Lambda + API Gateway + DynamoDB + S3 + ELB + Auto Scaling + IAM(ロール・ポリシー管理) + SSM + CloudWatch/Logs/Dashboards |
 | | アクセスキー x N | ユーザーごとに自動生成 |
 | ストレージ | S3 バケット | Terraform state 保存用 (バージョニング有効・暗号化有効) |
 

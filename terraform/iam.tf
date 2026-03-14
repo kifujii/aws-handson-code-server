@@ -82,7 +82,7 @@ EOT
 resource "aws_iam_policy" "handson" {
   name        = "${var.project_name}-policy"
   path        = "/${var.project_name}/"
-  description = "Handson participants policy - Bedrock, EC2/VPC, Lambda, API Gateway, ELB, Auto Scaling, CloudWatch, IAM"
+  description = "Handson participants policy - Bedrock, EC2/VPC, Lambda, API Gateway, DynamoDB, S3, ELB, Auto Scaling, CloudWatch, IAM"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -135,7 +135,17 @@ resource "aws_iam_policy" "handson" {
           "iam:DeleteInstanceProfile",
           "iam:TagInstanceProfile",
           "iam:AddRoleToInstanceProfile",
-          "iam:RemoveRoleFromInstanceProfile"
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:CreatePolicy",
+          "iam:DeletePolicy",
+          "iam:GetPolicy",
+          "iam:GetPolicyVersion",
+          "iam:ListPolicyVersions",
+          "iam:CreatePolicyVersion",
+          "iam:DeletePolicyVersion",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:DeleteRolePolicy"
         ]
         Resource = "*"
       },
@@ -168,7 +178,12 @@ resource "aws_iam_policy" "handson" {
           "lambda:InvokeFunction",
           "lambda:AddPermission",
           "lambda:RemovePermission",
-          "lambda:GetPolicy"
+          "lambda:GetPolicy",
+          "lambda:TagResource",
+          "lambda:UntagResource",
+          "lambda:ListTags",
+          "lambda:ListVersionsByFunction",
+          "lambda:PublishVersion"
         ]
         Resource = "*"
       },
@@ -229,6 +244,62 @@ resource "aws_iam_policy" "handson" {
           "autoscaling:DeletePolicy",
           "autoscaling:DescribePolicies",
           "autoscaling:AttachInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "DynamoDBAccess"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:CreateTable",
+          "dynamodb:DeleteTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:UpdateTable",
+          "dynamodb:ListTables",
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:DescribeTimeToLive",
+          "dynamodb:UpdateTimeToLive",
+          "dynamodb:DescribeContinuousBackups",
+          "dynamodb:UpdateContinuousBackups",
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
+          "dynamodb:ListTagsOfResource"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "S3Access"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
+          "s3:DeleteBucketPolicy",
+          "s3:GetBucketWebsite",
+          "s3:PutBucketWebsite",
+          "s3:DeleteBucketWebsite",
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:ListAllMyBuckets",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:PutBucketAcl",
+          "s3:GetBucketAcl",
+          "s3:PutBucketTagging",
+          "s3:GetBucketTagging",
+          "s3:PutBucketVersioning",
+          "s3:GetBucketVersioning",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetEncryptionConfiguration"
         ]
         Resource = "*"
       },
