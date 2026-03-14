@@ -418,6 +418,8 @@ terraform output -raw admin_password
 
 > **前提**: SSH アクセスが必要です。`TF_VAR_admin_cidr` を設定して `terraform apply` を実行しておいてください。
 
+**差分更新** (デフォルト): リポジトリの最新を pull し、変更があったファイルのみ同期します。
+
 ```bash
 # SSH鍵を取得（まだない場合）
 cd terraform
@@ -433,7 +435,19 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'sudo /opt/handson/update-materials.sh user01'
 ```
 
-> 参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、上書きされません。
+**完全再配置** (`--force`): リポジトリと資材を完全に削除してから再クローン・再配置します。ファイルの削除やリネームがあった場合に使用してください。
+
+```bash
+# 全コンテナを完全再配置
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh --force'
+
+# 特定ユーザーのみ完全再配置
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh --force user01'
+```
+
+> いずれのモードでも、参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、削除・上書きされません。
 
 ## 参加者向けの操作方法
 
