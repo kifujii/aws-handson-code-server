@@ -275,22 +275,69 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'cat /var/log/handson-setup.log'
 ```
 
+### Step 5.5: SSH アクセスの有効化 (任意)
+
+環境構築後でも、`.env` を変更して `terraform apply` を実行するだけで SSH アクセスを有効・無効に切り替えられます。EC2 の再構築は不要です。
+
+**1. `.env` に `TF_VAR_admin_cidr` を設定**
+
+```bash
+# 自分の IP のみ許可する場合 (推奨)
+# 自分の IP は curl https://checkip.amazonaws.com で確認
+export TF_VAR_admin_cidr='YOUR_IP/32'
+
+# どこからでも SSH 可能にする場合 (緊急時・検証のみ)
+# export TF_VAR_admin_cidr='0.0.0.0/0'
+```
+
+**2. Security Group を更新**
+
+```bash
+source .env
+cd terraform
+terraform apply   # EC2 は再作成されない、Security Group のみ更新
+```
+
+**3. SSH 接続**
+
+```bash
+# SSH 秘密鍵を取得
+terraform output -raw ssh_private_key > /tmp/handson-key.pem
+chmod 600 /tmp/handson-key.pem
+
+# SSH 接続
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip)
+```
+
+**4. 作業後は SSH を閉じる (推奨)**
+
+```bash
+# .env の TF_VAR_admin_cidr をコメントアウト
+# export TF_VAR_admin_cidr='...'  ← コメントアウト
+
+source .env
+cd terraform
+terraform apply   # SSH ポートが閉じる
+```
+
 ### Step 6: 参加者への配布情報を取得
 
 ```bash
 terraform output -json credentials_sheet \
-  | jq -r '.[] | "ユーザー: \(.user)  URL: \(.url)  パスワード: \(.password)"'
+  | jq -r '.[] | "【VSCode】ユーザー: \(.user)  URL: \(.url)  パスワード: \(.password)\n【AWSコンソール】URL: \(.console_login_url)  ユーザー名: \(.console_user)  パスワード: \(.console_password)"'
 ```
 
 出力例:
 
 ```
-ユーザー: user01  URL: https://203.0.113.10:8001/  パスワード: Xk9mP2qR
-ユーザー: user02  URL: https://203.0.113.10:8002/  パスワード: Lm3nY8wZ
+【VSCode】ユーザー: user01  URL: https://203.0.113.10:8001/  パスワード: Xk9mP2qR
+【AWSコンソール】URL: https://123456789012.signin.aws.amazon.com/console  ユーザー名: handson-user01  パスワード: AbCdEfGh1234
 ...
 ```
 
 この一覧を参加者に配布してください。
+
+> **注意**: `terraform apply` 後に `./scripts/init-backend.sh` を再実行して null プロバイダーを初期化してから `terraform apply` してください（初回のみ）。
 
 ### Step 7: 管理者用環境の情報を取得
 
@@ -310,9 +357,21 @@ terraform output -raw admin_password
 
 環境構築後にワークショップ資材 (`TF_VAR_workshop_repo_url` で指定したリポジトリ) が更新された場合、以下のコマンドで全コンテナの資材を最新に更新できます。コンテナの再起動は不要です。
 
+> **前提**: SSH アクセスが必要です。`TF_VAR_admin_cidr` を設定して `terraform apply` を実行しておいてください。
+
 ```bash
+# SSH鍵を取得（まだない場合）
+cd terraform
+terraform output -raw ssh_private_key > /tmp/handson-key.pem
+chmod 600 /tmp/handson-key.pem
+
+# 全コンテナを一括更新
 ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'sudo /opt/handson/update-materials.sh'
+
+# 特定ユーザーのみ更新する場合
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh user01'
 ```
 
 > 参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、上書きされません。

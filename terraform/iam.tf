@@ -9,6 +9,17 @@ resource "random_password" "code_server" {
   special = false
 }
 
+# AWSコンソールログイン用パスワード (ユーザーごとに自動生成)
+# min_upper/min_lower/min_numeric で一般的なパスワードポリシーを満たす
+resource "random_password" "console" {
+  count       = var.user_count
+  length      = 12
+  special     = false
+  min_upper   = 2
+  min_lower   = 2
+  min_numeric = 2
+}
+
 # 管理者用 code-server のパスワード
 resource "random_password" "admin" {
   length  = 16
@@ -30,11 +41,38 @@ resource "aws_iam_user" "handson" {
   }
 }
 
-# コンソールアクセスは無効 (aws_iam_user_login_profile を作成しない)
-# プログラムアクセス用のアクセスキーのみ発行
+# プログラムアクセス用のアクセスキー
 resource "aws_iam_access_key" "handson" {
   count = var.user_count
   user  = aws_iam_user.handson[count.index].name
+}
+
+# AWSコンソールログイン用パスワード設定
+# aws_iam_user_login_profile の password 属性は AWS Provider v5 で廃止のため
+# null_resource + local-exec で aws iam create-login-profile を直接呼び出す
+resource "null_resource" "console_login" {
+  count = var.user_count
+
+  triggers = {
+    user_name = aws_iam_user.handson[count.index].name
+    password  = random_password.console[count.index].result
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+if aws iam get-login-profile --user-name '${aws_iam_user.handson[count.index].name}' 2>/dev/null; then
+  aws iam update-login-profile \
+    --user-name '${aws_iam_user.handson[count.index].name}' \
+    --password '${random_password.console[count.index].result}' \
+    --no-password-reset-required
+else
+  aws iam create-login-profile \
+    --user-name '${aws_iam_user.handson[count.index].name}' \
+    --password '${random_password.console[count.index].result}' \
+    --no-password-reset-required
+fi
+EOT
+  }
 }
 
 ################################################################################
