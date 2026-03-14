@@ -118,6 +118,61 @@ EC2 起動後、user-data スクリプトにより以下が自動構築されま
 | reset-user.sh | ワークスペースリセットスクリプト (.claude 保持) |
 | Swap 8GB | メモリスパイク対策 |
 
+## AWSアカウントあたりの環境数の目安
+
+1つのAWSアカウントで複数の環境を払い出す場合、以下のサービスクォータを考慮してください。
+
+### VPC 数の制限
+
+AWS のデフォルト VPC 上限は **リージョンあたり 5 つ** です。このコードは環境ごとに 1 つの VPC を作成します。デフォルト VPC (1 つ) がすでに存在するため、**同一アカウント・同一リージョンで最大 4 環境** が目安です。
+
+上限を超えて環境を作成したい場合は、以下のいずれかの回避策を検討してください。
+
+| 回避策 | 詳細 |
+|--------|------|
+| **別リージョンを利用** | VPC 上限はリージョンごとに独立しているため、`ap-northeast-3 (大阪)` など別リージョンを使うことで上限を回避できます。ただし Bedrock の利用可否と Bedrock クォータはリージョンごとに異なるため注意が必要です。 |
+| **VPC 上限引き上げを申請** | AWS サポートへ引き上げリクエストを送ることで 5 環境以上も可能ですが、反映に数日かかる場合があります。 |
+
+### Bedrock クォータ
+
+参加者全員が同時に Claude を呼び出すため、複数環境を同一アカウント・同一リージョンで運用すると Bedrock のレート制限に達しやすくなります。別リージョンを使う場合はリージョンごとにクォータが独立しているため、レート制限の面でも有効です。
+
+| 環境数 | 参加者数 (例) | 注意点 |
+|--------|:----------:|--------|
+| 1 環境 | ~20 人 | クォータに余裕があれば問題なし |
+| 2 環境 | ~40 人 | InvokeModel の引き上げを推奨 |
+| 3 環境以上 | ~60 人以上 | **別リージョンまたは別アカウント分割を強く推奨** |
+
+> Bedrock クォータの確認・引き上げ: AWS コンソール → **Service Quotas** → **Amazon Bedrock** → `InvokeModel` / `InvokeModelWithResponseStream`
+
+### EC2 インスタンスタイプとサーバスペック
+
+デフォルトのインスタンスタイプは `m6i.8xlarge` (32 vCPU / 128 GB RAM) です。1 環境あたりの参加者数が少ない場合はスペックを落としてコストを削減できます。
+
+| 参加者数/環境 | 推奨インスタンスタイプ | 備考 |
+|:----------:|---------------------|------|
+| ~4 人 | `m6i.2xlarge` (8 vCPU / 32 GB RAM) | 1 アカウント 4 環境での利用など |
+| ~10 人 | `m6i.4xlarge` (16 vCPU / 64 GB RAM) | |
+| ~20 人 | `m6i.8xlarge` (32 vCPU / 128 GB RAM) | デフォルト |
+
+インスタンスタイプは `.env` の `TF_VAR_instance_type` で変更できます（変数が未定義の場合は `terraform/variables.tf` の `default` 値を直接修正してください）。
+
+また、EC2 の vCPU クォータが **環境数 × インスタンスの vCPU 数** 以上あることを確認してください。
+
+> AWS コンソール → **Service Quotas** → **Amazon EC2** → `Running On-Demand Standard instances`
+
+### 推奨構成
+
+| 参加者数 | 構成例 | 備考 |
+|---------|--------|------|
+| ~4 人 | 1 アカウント・1 リージョン・1 環境 | `m6i.2xlarge` でコスト削減可 |
+| ~20 人 | 1 アカウント・1 リージョン・1 環境 | `m6i.8xlarge` (デフォルト) |
+| ~40 人 | 1 アカウント・1 リージョン・2 環境 | Bedrock クォータ引き上げを実施 |
+| ~80 人 | 1 アカウント・2 リージョン・各 2 環境 | リージョン分散でクォータ上限を回避 |
+| ~80 人以上 | 複数アカウント | Organizations での管理を推奨 |
+
+---
+
 ## 事前準備
 
 ### 1. 管理者 PC に必要なツール
@@ -130,12 +185,17 @@ EC2 起動後、user-data スクリプトにより以下が自動構築されま
 
 ### 2. Bedrock モデルの有効化 (前日までに実施)
 
-> **重要**: モデルの有効化には時間がかかる場合があるため、**ハンズオン前日までに完了** してください。
+> **重要**: モデルへのアクセス申請〜有効化には時間がかかる場合があるため、**ハンズオン前日までに完了** してください。
+
+Amazon Bedrock で Anthropic の Claude モデルを利用するには、**AWS コンソール上で Anthropic への利用申請 (Model access request)** が必要です。申請は無償ですが、審査に数時間〜数日かかることがあります。
 
 1. AWS コンソールにログイン
 2. リージョンを **ap-northeast-1 (東京)** に切り替え
 3. **Amazon Bedrock** > **Model access** に移動
-4. **Claude Sonnet 4.6** のアクセスをリクエスト・有効化
+4. **Claude Sonnet 4.6** の行にある **Request access** をクリックし、申請フォームを送信
+5. ステータスが `Access granted` になったことを確認してから環境構築を進める
+
+> 別リージョンでも利用する場合は、**リージョンごとに同じ手順で申請**が必要です。
 
 ### 3. Bedrock クォータの確認
 
@@ -359,6 +419,8 @@ terraform output -raw admin_password
 
 > **前提**: SSH アクセスが必要です。`TF_VAR_admin_cidr` を設定して `terraform apply` を実行しておいてください。
 
+**差分更新** (デフォルト): リポジトリの最新を pull し、変更があったファイルのみ同期します。
+
 ```bash
 # SSH鍵を取得（まだない場合）
 cd terraform
@@ -374,7 +436,30 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'sudo /opt/handson/update-materials.sh user01'
 ```
 
-> 参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、上書きされません。
+**完全再配置** (`--force`): リポジトリと資材を完全に削除してから再クローン・再配置します。ファイルの削除やリネームがあった場合に使用してください。
+
+```bash
+# 全コンテナを完全再配置
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh --force'
+
+# 特定ユーザーのみ完全再配置
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
+  'sudo /opt/handson/update-materials.sh --force user01'
+```
+
+> いずれのモードでも、参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、削除・上書きされません。
+
+### Step 9: EC2 インスタンスの再構築 (任意)
+
+`user-data.sh.tpl` を変更した場合、通常の `terraform apply` では EC2 は in-place 更新（メタデータのみ更新）となり、ユーザーデータは再実行されません。EC2 を再構築してユーザーデータを反映させるには `-replace` オプションを使用します。
+
+```bash
+cd terraform
+terraform apply -replace="aws_instance.handson"
+```
+
+> **影響範囲**: EC2 が破棄→再作成されますが、Elastic IP・パスワード・IAM ユーザーなど EC2 以外のリソースは変更されません。開発環境 URL、開発環境パスワード、コンソールログイン URL・パスワードは**すべてそのまま**です。ただし、Docker ボリューム上の参加者の作業内容は失われます。
 
 ## 参加者向けの操作方法
 
@@ -538,11 +623,11 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 
 | リソース | 単価 (ap-northeast-1) | 8時間あたり |
 |----------|----------------------|------------|
-| EC2 m6i.8xlarge | 約 $2.46/時間 | 約 $20 |
+| EC2 m6i.2xlarge (~4人向け) | 約 $0.616/時間 | 約 $5 |
+| EC2 m6i.8xlarge (~20人向け、デフォルト) | 約 $2.46/時間 | 約 $20 |
 | EBS 300GB gp3 | 約 $0.096/GB/月 | 約 $0.03 |
 | Elastic IP (実行中) | $0.005/時間 | 約 $0.04 |
 | データ転送 | 最初の 100GB 無料 | $0 |
-| **合計** | | **約 $20** |
 
 > IAM ユーザー・ポリシーに料金はかかりません。Bedrock の利用料金は別途発生します。
 

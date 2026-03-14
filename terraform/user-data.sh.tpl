@@ -635,7 +635,7 @@ cat >> "$${WORK_DIR}/docker-compose.yml" << COMPOSE_ADMIN
     volumes:
       - admin-workspace:/home/coder/workspace
       - ./credentials/admin/aws:/home/coder/.aws:ro
-      - ./credentials/admin/claude:/home/coder/workspace/.claude
+      - ./credentials/admin/claude:/home/coder/.claude
 
 COMPOSE_ADMIN
 
@@ -657,7 +657,7 @@ for i in $(seq 0 $(($${USER_COUNT} - 1))); do
     volumes:
       - $${USER_NAME}-workspace:/home/coder/workspace
       - ./credentials/$${USER_NAME}/aws:/home/coder/.aws:ro
-      - ./credentials/$${USER_NAME}/claude:/home/coder/workspace/.claude
+      - ./credentials/$${USER_NAME}/claude:/home/coder/.claude
 
 COMPOSE_SVC
 done
@@ -763,15 +763,25 @@ cat > "$${WORK_DIR}/update-materials.sh" << 'UPDATE_EOF'
 # コンテナの再起動は不要です。
 #
 # 使い方:
-#   sudo /opt/handson/update-materials.sh          # 全コンテナ
-#   sudo /opt/handson/update-materials.sh user01   # 特定ユーザーのみ
+#   sudo /opt/handson/update-materials.sh              # 全コンテナ (差分更新)
+#   sudo /opt/handson/update-materials.sh user01       # 特定ユーザーのみ (差分更新)
+#   sudo /opt/handson/update-materials.sh --force      # 全コンテナ (完全削除→再クローン)
+#   sudo /opt/handson/update-materials.sh --force user01  # 特定ユーザー (完全削除→再クローン)
 # =============================================================================
 
 set -euo pipefail
 
 COMPOSE_DIR="/opt/handson"
-TARGET="$${1:-all}"
+FORCE=false
+TARGET="all"
 REPO_URL="__WORKSHOP_REPO_URL__"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE=true; shift ;;
+    *) TARGET="$1"; shift ;;
+  esac
+done
 
 if [ -z "$REPO_URL" ]; then
   echo "エラー: ワークショップ資材のリポジトリURLが設定されていません"
@@ -782,45 +792,68 @@ fi
 sync_materials() {
   local container="$1"
   local name="$${container#handson-}"
+  local force="$2"
 
-  echo "=== [$${name}] 資材更新中 ==="
-  docker exec "$container" bash -c '
-    REPO_DIR="/home/coder/.workshop-repo"
-    WORKSPACE="/home/coder/workspace"
-    REPO_URL="__WORKSHOP_REPO_URL__"
+  if [ "$force" = "true" ]; then
+    echo "=== [$${name}] 資材を完全再配置中 (--force) ==="
+  else
+    echo "=== [$${name}] 資材更新中 ==="
+  fi
 
-    if [ -d "$REPO_DIR/.git" ]; then
-      git -C "$REPO_DIR" pull --ff-only 2>/dev/null || true
+  docker exec "$container" bash -c "
+    REPO_DIR=\"/home/coder/.workshop-repo\"
+    WORKSPACE=\"/home/coder/workspace\"
+    REPO_URL=\"__WORKSHOP_REPO_URL__\"
+    FORCE=\"$force\"
+
+    if [ \"\$FORCE\" = \"true\" ]; then
+      rm -rf \"\$REPO_DIR\"
+      find \"\$WORKSPACE\" -mindepth 1 -maxdepth 1 \
+        ! -name '.env' ! -name 'terraform' ! -name 'ansible' ! -name 'keys' \
+        -exec rm -rf {} +
+    fi
+
+    if [ -d \"\$REPO_DIR/.git\" ]; then
+      git -C \"\$REPO_DIR\" pull --ff-only 2>/dev/null || true
     else
-      git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || true
+      git clone --depth 1 \"\$REPO_URL\" \"\$REPO_DIR\" 2>/dev/null || true
     fi
 
-    if [ -d "$REPO_DIR" ]; then
-      cd "$REPO_DIR"
+    if [ -d \"\$REPO_DIR\" ]; then
+      cd \"\$REPO_DIR\"
       tar cf - \
-        --exclude=".git" \
-        --exclude=".env" \
-        --exclude="terraform" \
-        --exclude="ansible" \
-        --exclude="keys" \
-        . | tar xf - -C "$WORKSPACE/" 2>/dev/null || true
+        --exclude='.git' \
+        --exclude='.env' \
+        --exclude='terraform' \
+        --exclude='ansible' \
+        --exclude='keys' \
+        . | tar xf - -C \"\$WORKSPACE/\" 2>/dev/null || true
     fi
-  '
-  echo "=== [$${name}] 更新完了 ==="
+  "
+
+  if [ "$force" = "true" ]; then
+    echo "=== [$${name}] 再配置完了 ==="
+  else
+    echo "=== [$${name}] 更新完了 ==="
+  fi
 }
 
 cd "$COMPOSE_DIR"
 
 if [ "$TARGET" = "all" ]; then
-  for container in $(docker compose ps --format '{{.Name}}' | grep handson-); do
-    sync_materials "$container"
+  for container in $(docker compose ps --format '{{.Name}}' | grep -E 'handson-(user|admin)'); do
+    sync_materials "$container" "$FORCE"
   done
 else
-  sync_materials "handson-$TARGET"
+  sync_materials "handson-$TARGET" "$FORCE"
 fi
 
 echo ""
-echo "資材更新が完了しました"
+if [ "$FORCE" = "true" ]; then
+  echo "資材の完全再配置が完了しました"
+else
+  echo "資材更新が完了しました"
+fi
 UPDATE_EOF
 chmod +x "$${WORK_DIR}/update-materials.sh"
 sed -i "s|__WORKSHOP_REPO_URL__|$${WORKSHOP_REPO_URL}|g" "$${WORK_DIR}/update-materials.sh"

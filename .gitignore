@@ -1,6 +1,7 @@
 # 認証情報 (.env.template はコミット対象)
 .env
 .env.*
+!.env.template
 
 # Terraform
 terraform/.terraform/
