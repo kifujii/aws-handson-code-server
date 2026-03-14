@@ -450,6 +450,17 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
 
 > いずれのモードでも、参加者が作成したファイル (`.env`, `terraform/`, `ansible/`, `keys/`) は保護され、削除・上書きされません。
 
+### Step 9: EC2 インスタンスの再構築 (任意)
+
+`user-data.sh.tpl` を変更した場合、通常の `terraform apply` では EC2 は in-place 更新（メタデータのみ更新）となり、ユーザーデータは再実行されません。EC2 を再構築してユーザーデータを反映させるには `-replace` オプションを使用します。
+
+```bash
+cd terraform
+terraform apply -replace="aws_instance.handson"
+```
+
+> **影響範囲**: EC2 が破棄→再作成されますが、Elastic IP・パスワード・IAM ユーザーなど EC2 以外のリソースは変更されません。開発環境 URL、開発環境パスワード、コンソールログイン URL・パスワードは**すべてそのまま**です。ただし、Docker ボリューム上の参加者の作業内容は失われます。
+
 ## 参加者向けの操作方法
 
 ### アクセス手順
