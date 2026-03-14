@@ -275,6 +275,51 @@ ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip) \
   'cat /var/log/handson-setup.log'
 ```
 
+### Step 5.5: SSH アクセスの有効化 (任意)
+
+環境構築後でも、`.env` を変更して `terraform apply` を実行するだけで SSH アクセスを有効・無効に切り替えられます。EC2 の再構築は不要です。
+
+**1. `.env` に `TF_VAR_admin_cidr` を設定**
+
+```bash
+# 自分の IP のみ許可する場合 (推奨)
+# 自分の IP は curl https://checkip.amazonaws.com で確認
+export TF_VAR_admin_cidr='YOUR_IP/32'
+
+# どこからでも SSH 可能にする場合 (緊急時・検証のみ)
+# export TF_VAR_admin_cidr='0.0.0.0/0'
+```
+
+**2. Security Group を更新**
+
+```bash
+source .env
+cd terraform
+terraform apply   # EC2 は再作成されない、Security Group のみ更新
+```
+
+**3. SSH 接続**
+
+```bash
+# SSH 秘密鍵を取得
+terraform output -raw ssh_private_key > /tmp/handson-key.pem
+chmod 600 /tmp/handson-key.pem
+
+# SSH 接続
+ssh -i /tmp/handson-key.pem ec2-user@$(terraform output -raw ec2_public_ip)
+```
+
+**4. 作業後は SSH を閉じる (推奨)**
+
+```bash
+# .env の TF_VAR_admin_cidr をコメントアウト
+# export TF_VAR_admin_cidr='...'  ← コメントアウト
+
+source .env
+cd terraform
+terraform apply   # SSH ポートが閉じる
+```
+
 ### Step 6: 参加者への配布情報を取得
 
 ```bash
